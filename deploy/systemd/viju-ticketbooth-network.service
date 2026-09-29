@@ -1,0 +1,16 @@
+[Unit]
+Description=ViJu-TicketBooth Wi-Fi recovery watchdog
+After=NetworkManager.service
+Requires=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/libexec/viju-network watch
+Environment=VIJU_RECOVERY_TIMEOUT=90
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

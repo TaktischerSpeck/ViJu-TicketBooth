@@ -1,0 +1,20 @@
+[Unit]
+Description=ViJu-TicketBooth API
+After=network.target
+
+[Service]
+Type=simple
+User=viju
+Group=viju
+WorkingDirectory=/opt/viju-ticketbooth
+EnvironmentFile=/etc/viju-ticketbooth/app.env
+ExecStart=/opt/viju-ticketbooth/backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=3
+ReadWritePaths=/var/lib/viju-ticketbooth
+PrivateTmp=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

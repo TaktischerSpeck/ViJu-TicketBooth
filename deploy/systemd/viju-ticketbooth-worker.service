@@ -1,0 +1,24 @@
+[Unit]
+Description=ViJu-TicketBooth print worker
+After=bluetooth.service viju-ticketbooth-api.service
+Wants=bluetooth.service
+
+[Service]
+Type=simple
+User=viju
+Group=viju
+WorkingDirectory=/opt/viju-ticketbooth
+EnvironmentFile=/etc/viju-ticketbooth/app.env
+ExecStart=/opt/viju-ticketbooth/backend/.venv/bin/python -m app.printing
+Environment=PYTHONPATH=/opt/viju-ticketbooth/backend
+Restart=always
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/viju-ticketbooth
+PrivateTmp=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

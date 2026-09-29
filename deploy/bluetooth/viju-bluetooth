@@ -1,0 +1,23 @@
+#!/opt/viju-ticketbooth/backend/.venv/bin/python
+"""Restricted root helper for BlueZ pairing and trust changes."""
+import asyncio
+import json
+import os
+import sys
+
+sys.path.insert(0, "/opt/viju-ticketbooth/backend")
+from app.bluetooth import device_action
+from app.schemas import Printer
+
+
+if __name__ == "__main__":
+    if os.geteuid() != 0 or len(sys.argv) != 3 or sys.argv[1] not in ("pair", "trust", "forget"):
+        sys.exit(2)
+    try:
+        mac = Printer(mac=sys.argv[2]).mac
+        if not mac:
+            raise ValueError("Printer MAC is required")
+        print(json.dumps(asyncio.run(device_action(mac, sys.argv[1]))))
+    except Exception as exc:
+        print(f"Bluetooth action failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        sys.exit(1)
