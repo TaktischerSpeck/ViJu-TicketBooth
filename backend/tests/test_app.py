@@ -7,6 +7,7 @@ from PIL import Image
 from fastapi.testclient import TestClient
 
 from app import config, database
+from app import main as main_module
 from app.main import app
 from app.movies import sorted_posters
 from app.printing import command, process_one
@@ -26,6 +27,28 @@ def test_poster_priority_and_validation():
     assert [p["file_path"] for p in sorted_posters(posters)] == ["/en.jpg", "/neutral.jpg", "/de.jpg"]
     assert Printer(mac="c4:30:18:38:bd:e1", channel=4).mac == "C4:30:18:38:BD:E1"
     assert command("C4:30:18:38:BD:E1", 4, "/tmp/test.jpg")[-4:] == ["--channel", "4", "-p", "/tmp/test.jpg"]
+
+
+def test_printer_status_distinguishes_saved_pairing_from_live_connection(monkeypatch):
+    async def paired_but_disconnected(_mac):
+        return {"adapter_available": True, "device_known": True, "paired": True, "trusted": True, "connected": False}
+
+    monkeypatch.setattr(config, "PRINTER_BACKEND", "obexftp")
+    monkeypatch.setattr(main_module, "printer", lambda: {"mac": "C4:30:18:38:BD:E1", "channel": 4})
+    monkeypatch.setattr(main_module.bluetooth, "status", paired_but_disconnected)
+    monkeypatch.setattr(main_module.bluetooth, "obex_available", lambda: True)
+    monkeypatch.setattr(main_module.bluetooth, "check_rfcomm", lambda _mac, _channel: {"attempted": True, "reachable": True, "error": None})
+
+    passive = asyncio.run(main_module.printer_status())
+    assert passive["prerequisites_met"] is True
+    assert passive["ready"] is False
+    checked = asyncio.run(main_module.check_printer())
+    assert checked["connection_test"]["reachable"] is True
+    def unexpected_pairing(*_args):
+        raise AssertionError("Pairing should not run twice")
+
+    monkeypatch.setattr(main_module, "bluetooth_action", unexpected_pairing)
+    assert asyncio.run(main_module.setup_printer())["already_paired"] is True
 
 
 def test_render_crop_metadata(tmp_path):

@@ -1,4 +1,5 @@
 import asyncio
+import socket
 import shutil
 from dbus_next.aio import MessageBus
 from dbus_next import BusType, Variant
@@ -52,8 +53,8 @@ async def status(mac):
             if device and device["Address"].value.upper() == mac:
                 result.update(device_known=True, paired=device["Paired"].value, trusted=device["Trusted"].value, connected=device["Connected"].value)
         bus.disconnect()
-    except Exception:
-        pass
+    except Exception as exc:
+        result["error"] = f"{type(exc).__name__}: {exc}"
     return result
 
 
@@ -109,7 +110,8 @@ async def device_action(mac, action):
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(502, f"BlueZ {action} failed: {type(exc).__name__}") from exc
+        detail = ": ".join(str(value) for value in (getattr(exc, "type", None), getattr(exc, "text", None) or str(exc)) if value)
+        raise HTTPException(502, f"BlueZ {action} failed: {detail or type(exc).__name__}") from exc
     finally:
         if agent_registered:
             try:
@@ -123,3 +125,14 @@ async def device_action(mac, action):
 
 def obex_available():
     return shutil.which("obexftp") is not None
+
+
+def check_rfcomm(mac: str, channel: int) -> dict:
+    """Try the configured RFCOMM channel without sending a print job."""
+    try:
+        with socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM) as connection:
+            connection.settimeout(12)
+            connection.connect((mac, channel))
+        return {"attempted": True, "reachable": True, "error": None}
+    except (OSError, TimeoutError, AttributeError) as exc:
+        return {"attempted": True, "reachable": False, "error": f"{type(exc).__name__}: {exc}"}

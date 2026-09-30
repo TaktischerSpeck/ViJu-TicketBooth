@@ -288,8 +288,10 @@ async def printer_status():
     value = Printer.model_validate(printer())
     bt = await bluetooth.status(value.mac) if value.mac else await bluetooth.status("")
     available = bluetooth.obex_available()
-    ready = config.PRINTER_BACKEND == "mock" or (bool(value.mac) and bt["adapter_available"] and bt["device_known"] and bt["paired"] and bt["trusted"] and available)
-    return {"configured": bool(value.mac), "backend": config.PRINTER_BACKEND, "bluetooth": bt, "obexftp": {"available": available, "channel": value.channel}, "ready": ready}
+    configured = bool(value.mac)
+    prerequisites_met = configured and bt["adapter_available"] and bt["device_known"] and bt["paired"] and bt["trusted"] and available
+    ready = config.PRINTER_BACKEND == "mock" or (prerequisites_met and bt["connected"])
+    return {"configured": configured, "backend": config.PRINTER_BACKEND, "bluetooth": bt, "obexftp": {"available": available, "channel": value.channel}, "prerequisites_met": prerequisites_met, "ready": ready}
 
 
 @app.post("/api/printer/setup", dependencies=[Depends(admin)])
@@ -297,6 +299,8 @@ async def setup_printer():
     value = Printer.model_validate(printer())
     if not value.mac:
         raise HTTPException(422, "Configure printer MAC first")
+    if (await bluetooth.status(value.mac))["paired"]:
+        return {"already_paired": True, "message": "BlueZ already has a pairing for this device"}
     return bluetooth_action("pair", value.mac)
 
 
@@ -308,7 +312,17 @@ async def trust_printer():
 
 @app.post("/api/printer/check", dependencies=[Depends(admin)])
 async def check_printer():
-    return await printer_status()
+    value = Printer.model_validate(printer())
+    result = await printer_status()
+    if config.PRINTER_BACKEND == "mock":
+        result["connection_test"] = {"attempted": False, "reachable": None, "error": "Mock backend has no Bluetooth connection"}
+    elif not value.mac:
+        result["connection_test"] = {"attempted": False, "reachable": False, "error": "Configure printer MAC first"}
+    elif not result["bluetooth"]["adapter_available"]:
+        result["connection_test"] = {"attempted": False, "reachable": False, "error": result["bluetooth"].get("error") or "Bluetooth adapter unavailable"}
+    else:
+        result["connection_test"] = await anyio.to_thread.run_sync(bluetooth.check_rfcomm, value.mac, value.channel)
+    return result
 
 
 @app.post("/api/printer/forget", dependencies=[Depends(admin)])

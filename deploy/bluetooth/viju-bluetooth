@@ -4,6 +4,7 @@ import asyncio
 import json
 import os
 import sys
+from fastapi import HTTPException
 
 sys.path.insert(0, "/opt/viju-ticketbooth/backend")
 from app.bluetooth import device_action
@@ -19,5 +20,6 @@ if __name__ == "__main__":
             raise ValueError("Printer MAC is required")
         print(json.dumps(asyncio.run(device_action(mac, sys.argv[1]))))
     except Exception as exc:
-        print(f"Bluetooth action failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        detail = exc.detail if isinstance(exc, HTTPException) else f"{type(exc).__name__}: {exc}"
+        print(f"Bluetooth action failed: {detail}", file=sys.stderr)
         sys.exit(1)

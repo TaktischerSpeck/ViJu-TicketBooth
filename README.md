@@ -56,6 +56,18 @@ cd frontend && npm run build
 
 Die API unter `/docs` dokumentiert die Endpunkte. Zustandsänderungen verlangen `X-Admin-Token`. Die Konfiguration unter `/etc/viju-ticketbooth/app.env` enthält Server-Defaults, der Drucker wird zur Laufzeit in SQLite gespeichert. WLAN-Schlüssel liegen ausschließlich in root-eigenen NetworkManager-Profilen.
 
+### Druckerdiagnose auf dem Pi
+
+`GET /api/printer/status` zeigt den passiven BlueZ-Zustand. `paired` und `trusted` sind gespeicherte Eigenschaften und können auch bei ausgeschaltetem Drucker `true` sein. `connected` zeigt nur eine gerade bestehende Verbindung. `ready` ist beim echten Drucker nur bei aktiver Verbindung `true`; `prerequisites_met` zeigt die gespeicherten Voraussetzungen.
+
+`POST /api/printer/check` versucht ohne Druckdatei eine Verbindung zum eingestellten RFCOMM-Kanal und liefert `connection_test.reachable` sowie bei Fehlschlag `connection_test.error`. Ein erfolgreicher Test beweist weder einen abgeschlossenen OBEX-Transfer noch einen Ausdruck. Das Admin-Token wird benötigt:
+
+```bash
+read -rsp 'Admin-Token: ' VIJU_TOKEN; echo
+curl -sS -X POST -H "X-Admin-Token: $VIJU_TOKEN" http://127.0.0.1:8000/api/printer/check | jq
+unset VIJU_TOKEN
+```
+
 ## Bekannte Grenzen
 
 - Der OBEX-Befehl `obexftp --nopath --noconn --uuid none --bluetooth MAC --channel N -p datei.jpg` stammt aus dem Bauplan und muss am konkreten Sprocket mit Firmware und Papier kalibriert werden. Ein erfolgreicher Transfer bestätigt nicht zwingend einen tatsächlich abgeschlossenen Ausdruck.
