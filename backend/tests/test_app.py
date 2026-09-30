@@ -3,13 +3,10 @@ import asyncio
 import importlib.machinery
 import importlib.util
 import json
-import subprocess
 from PIL import Image
 from fastapi.testclient import TestClient
 
 from app import config, database
-from app import main as main_module
-from app import printing
 from app.main import app
 from app.movies import sorted_posters
 from app.printing import command, process_one
@@ -31,53 +28,15 @@ def test_poster_priority_and_validation():
     assert command("C4:30:18:38:BD:E1", 4, "/tmp/test.jpg")[-4:] == ["--channel", "4", "-p", "/tmp/test.jpg"]
 
 
-def test_printer_status_distinguishes_saved_pairing_from_live_connection(monkeypatch):
-    async def paired_but_disconnected(_mac):
-        return {"adapter_available": True, "device_known": True, "paired": True, "trusted": True, "connected": False}
-
-    monkeypatch.setattr(config, "PRINTER_BACKEND", "obexftp")
-    monkeypatch.setattr(main_module, "printer", lambda: {"mac": "C4:30:18:38:BD:E1", "channel": 4})
-    monkeypatch.setattr(main_module.bluetooth, "status", paired_but_disconnected)
-    monkeypatch.setattr(main_module.bluetooth, "obex_available", lambda: True)
-    monkeypatch.setattr(main_module.bluetooth, "check_rfcomm", lambda _mac, _channel: {"attempted": True, "reachable": True, "error": None})
-
-    passive = asyncio.run(main_module.printer_status())
-    assert passive["prerequisites_met"] is True
-    assert passive["ready"] is None
-    checked = asyncio.run(main_module.check_printer())
-    assert checked["connection_test"]["reachable"] is True
-    assert checked["ready"] is True
-    monkeypatch.setattr(main_module.bluetooth, "check_rfcomm", lambda _mac, _channel: {"attempted": True, "reachable": False, "error": "Connection refused"})
-    assert asyncio.run(main_module.check_printer())["ready"] is False
-    def unexpected_pairing(*_args):
-        raise AssertionError("Pairing should not run twice")
-
-    monkeypatch.setattr(main_module, "bluetooth_action", unexpected_pairing)
-    assert asyncio.run(main_module.setup_printer())["already_paired"] is True
-
-
-def test_obexftp_success_exit_255_is_only_a_transfer(monkeypatch, tmp_path):
-    monkeypatch.setattr(config, "PRINTER_BACKEND", "obexftp")
-    monkeypatch.setattr(printing, "setting", lambda *_args: {"mac": "C4:30:18:38:BD:E1", "channel": 4})
-    output = 'Connecting...\bdone Sending "ticket.jpg"... \b|\bdone Disconnecting...\bdone'
-    monkeypatch.setattr(printing.subprocess, "run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 255, "", output))
-    assert printing.print_file(tmp_path / "ticket.jpg") == "transferred"
-
-    monkeypatch.setattr(printing.subprocess, "run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 255, "", 'Sending "ticket.jpg"... failed: rejected'))
-    import pytest
-    with pytest.raises(RuntimeError, match="OBEX transfer failed"):
-        printing.print_file(tmp_path / "ticket.jpg")
-
-
 def test_render_crop_metadata(tmp_path):
     poster = tmp_path / "poster.png"
     Image.new("RGB", (800, 400), "white").save(poster)
     ticket = Ticket.model_validate({**example("sample"), "crop": {"zoom": 1.5, "x": .25, "y": -.25}, "design": {"readability": "strong", "text_color": "white"}})
-    assert metadata(ticket)[0] == "20:15 • Saal 4 • G12"
+    assert metadata(ticket)[0] == "20:15 • Saal 4 • Reihe G • Sitzplatz 12"
     png, jpg = render(ticket, poster)
     assert Image.open(io.BytesIO(png)).size == (config.WIDTH, config.HEIGHT)
     assert Image.open(io.BytesIO(jpg)).format == "JPEG"
-    assert Image.open(io.BytesIO(png)).getpixel((0, 0)) == (255, 255, 255)
+    assert Image.open(io.BytesIO(png)).getpixel((0, 0)) == (0, 0, 0)
 
 
 def test_upload_render_print_and_idempotency(tmp_path, monkeypatch):

@@ -1,6 +1,5 @@
 import json
 import logging
-import re
 import subprocess
 import time
 import anyio
@@ -30,20 +29,14 @@ def source_for(ticket):
 def print_file(path):
     printer = setting("printer", {"mac": config.DEFAULT_MAC, "channel": config.DEFAULT_CHANNEL})
     if config.PRINTER_BACKEND == "mock":
-        return "completed"
+        return
     from .schemas import Printer
     printer = Printer.model_validate(printer)
     if not printer.mac:
         raise RuntimeError("Printer MAC not configured")
     result = subprocess.run(command(printer.mac, printer.channel, path), shell=False, capture_output=True, text=True, timeout=config.TIMEOUT, check=False)
-    output = (result.stderr or "").replace("\x08", "")
-    # ObexFTP's CLI exits with -ret. Its library returns 1 for a successful
-    # PUT, so the shell sees 255 even though both transfer and disconnect ended.
-    put_finished = bool(re.search(r'Sending "[^"]+"\.\.\..*?done.*?Disconnecting\.\.\..*?done', output, re.DOTALL))
-    if result.returncode not in (0, 255) or not put_finished or re.search(r'failed:|error', output, re.IGNORECASE):
-        detail = (result.stdout or "") + " " + output
-        raise RuntimeError(f"OBEX transfer failed (exit {result.returncode}): {detail.strip()[-400:]}")
-    return "transferred"
+    if result.returncode:
+        raise RuntimeError(f"OBEX transfer failed (exit {result.returncode}): {result.stderr[-300:]}")
 
 
 async def render_ticket(ticket, job_id):
@@ -72,9 +65,9 @@ async def process_one():
         await render_ticket(Ticket.model_validate_json(row["body"]), job["id"])
         with connection() as db:
             db.execute("UPDATE jobs SET status='printing', updated_at=? WHERE id=?", (now(), job["id"]))
-        state = print_file(config.DATA / "print" / f"{job['id']}.jpg")
+        print_file(config.DATA / "print" / f"{job['id']}.jpg")
         with connection() as db:
-            db.execute("UPDATE jobs SET status=?, updated_at=? WHERE id=?", (state, now(), job["id"]))
+            db.execute("UPDATE jobs SET status='completed', updated_at=? WHERE id=?", (now(), job["id"]))
     except Exception as exc:
         log.exception("Print job failed: %s", job["id"])
         with connection() as db:

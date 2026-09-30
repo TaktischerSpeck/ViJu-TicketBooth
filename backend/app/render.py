@@ -1,17 +1,50 @@
 import io
 import math
+from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 from .config import WIDTH, HEIGHT, QUALITY
 
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+FONT_FAMILIES = {
+    "serif": ("DejaVuSerif.ttf", "DejaVuSerif-Bold.ttf"),
+    "mono": ("DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf"),
+}
+PRIMARY = ("time", "hall", "row", "seat", "format")
+SECONDARY = ("date", "cinema", "note")
+LABELS = {"date": "Datum", "time": "Uhrzeit", "cinema": "Kino", "hall": "Saal",
+          "row": "Reihe", "seat": "Sitzplatz", "format": "Format", "note": "Zusatztext"}
+
+
+def element_text(ticket, key):
+    value = getattr(ticket, key).strip()
+    if not value:
+        return ""
+    style = getattr(ticket.design.text_styles, key)
+    show_label = style.show_label if style.show_label is not None else key in ("hall", "row", "seat")
+    return f"{LABELS[key]} {value}" if show_label and key in LABELS else value
 
 
 def metadata(ticket):
-    seat = "".join([ticket.row, ticket.seat])
-    primary = [ticket.time, f"Saal {ticket.hall}" if ticket.hall else "", seat, ticket.format]
-    secondary = [ticket.date, ticket.cinema, ticket.note]
-    return " • ".join(x for x in primary if x), " • ".join(x for x in secondary if x)
+    return tuple(" • ".join(value for key in keys if (value := element_text(ticket, key)))
+                 for keys in (PRIMARY, SECONDARY))
+
+
+def font_points(design, key):
+    override = getattr(design.text_styles, key).font_size
+    ratio = 1.9 if key == "title" else (0.8 if key in SECONDARY else 1)
+    return override if override is not None else design.base_font_size * ratio
+
+
+def element_font(design, key):
+    style = getattr(design.text_styles, key)
+    bold = style.bold if style.bold is not None else key == "title"
+    path = FONT_BOLD if bold else FONT_REGULAR
+    if design.font_family in FONT_FAMILIES:
+        path = str(Path(FONT_REGULAR).parent / FONT_FAMILIES[design.font_family][int(bold)])
+    # Preserve former default sizes and scale with print resolution.
+    size = max(1, round(font_points(design, key) * 2.16 * WIDTH / 600))
+    return ImageFont.truetype(path, size)
 
 
 def cover(image, crop, width=WIDTH, height=HEIGHT):
@@ -25,91 +58,129 @@ def cover(image, crop, width=WIDTH, height=HEIGHT):
     return image.crop((left, top, left + width, top + height))
 
 
-def _wrap(draw, value, font, max_width):
-    words = value.upper().split()
-    lines = []
-    for word in words:
-        candidate = (lines[-1] + " " + word) if lines else word
-        if lines and draw.textlength(candidate, font=font) > max_width:
-            lines.append(word)
-        elif lines:
-            lines[-1] = candidate
-        else:
-            lines.append(word)
-    return lines
+def text_layout(ticket, draw):
+    design = ticket.design
+    stroke = {"off": 0, "light": 2, "strong": 4}[design.shadow]
+    margin_x = round(WIDTH * design.safe_area)
+    margin_y = round(HEIGHT * design.safe_area)
+    max_width = WIDTH - 2 * margin_x
+    gap = max(4, round(WIDTH * .012))
+    rows = []
+
+    def width(parts):
+        return sum(draw.textlength(value, font=font) for value, font in parts) + 2 * stroke
+
+    def append_row(parts):
+        if parts:
+            height = max(draw.textbbox((0, 0), value, font=font, anchor="lt", stroke_width=stroke)[3]
+                         for value, font in parts) + stroke
+            rows.append((parts.copy(), height))
+
+    for keys in (("title",), PRIMARY, SECONDARY):
+        parts = []
+        first = True
+        for key in keys:
+            value = element_text(ticket, key)
+            if not value:
+                continue
+            if key == "title":
+                value = value.upper()
+            font = element_font(design, key)
+            prefix = "" if first else " • "
+            first = False
+            # Keep each complete element together if it fits on a fresh line.
+            candidate = (prefix + value, font)
+            if width(parts + [candidate]) <= max_width:
+                parts.append(candidate)
+                continue
+            if parts:
+                append_row(parts)
+                parts = []
+            if width([(value, font)]) <= max_width:
+                parts = [(value, font)]
+                continue
+            # Wrap long values and unbroken words without dropping content.
+            segment = ""
+            for word in value.split():
+                trial = (segment + " " + word).strip()
+                if width([(trial, font)]) <= max_width:
+                    segment = trial
+                    continue
+                if segment:
+                    append_row([(segment, font)])
+                    segment = ""
+                for char in word:
+                    if segment and width([(segment + char, font)]) > max_width:
+                        append_row([(segment, font)])
+                        segment = ""
+                    segment += char
+            if segment:
+                parts = [(segment, font)]
+        append_row(parts)
+
+    total = sum(height for _, height in rows) + gap * max(0, len(rows) - 1)
+    if total > HEIGHT - 2 * margin_y:
+        raise ValueError("Text does not fit in the safe area. Reduce font sizes or shorten the text.")
+    top = HEIGHT - margin_y - total
+    positioned = []
+    y = top
+    for parts, height in rows:
+        row_width = width(parts)
+        x = margin_x if design.position == "bottom-left" else (
+            WIDTH - margin_x - row_width if design.position == "bottom-right" else (WIDTH - row_width) / 2)
+        for value, font in parts:
+            positioned.append((value, font, x + stroke, y + stroke))
+            x += draw.textlength(value, font=font)
+        y += height + gap
+    return positioned, (margin_x, top, WIDTH - margin_x, HEIGHT - margin_y), stroke
 
 
-def _title(draw, text, max_width):
-    for size in range(round(WIDTH * .069), 15, -2):
-        font = ImageFont.truetype(FONT_BOLD, size)
-        lines = _wrap(draw, text, font, max_width)
-        if len(lines) <= 2 and all(draw.textlength(line, font=font) <= max_width for line in lines):
-            return lines, font
-    raise ValueError("Title cannot fit in two lines")
+def apply_print_inset(canvas, inset):
+    # Reserve sacrificial edges for enlargement by edge-to-edge printer firmware.
+    if not inset:
+        return canvas
+    mx, my = round(WIDTH * inset), round(HEIGHT * inset)
+    framed = Image.new("RGB", (WIDTH, HEIGHT), "black")
+    framed.paste(canvas.resize((WIDTH - 2 * mx, HEIGHT - 2 * my), Image.Resampling.LANCZOS), (mx, my))
+    return framed
 
 
 def render(ticket, source):
-    canvas = cover(Image.open(source), ticket.crop)
-    draw = ImageDraw.Draw(canvas)
-    margin = round(WIDTH * ticket.design.safe_area)
-    max_width = WIDTH - 2 * margin
-    lines, title_font = _title(draw, ticket.title, max_width) if ticket.title else ([], ImageFont.truetype(FONT_BOLD, 20))
-    meta_font = ImageFont.truetype(FONT_REGULAR, round(WIDTH * .036))
-    small_font = ImageFont.truetype(FONT_REGULAR, round(WIDTH * .029))
-    first, second = metadata(ticket)
-    items = [(line, title_font) for line in lines]
-    if first:
-        items.append((first, meta_font))
-    if second:
-        items.append((second, small_font))
-    # Fit optional metadata without clipping at the print edge.
-    fitted = []
-    for value, font in items:
-        while draw.textlength(value, font=font) > max_width and font.size > 13:
-            font = ImageFont.truetype(FONT_REGULAR if font != title_font else FONT_BOLD, font.size - 1)
-        if draw.textlength(value, font=font) > max_width:
-            value = value[:max(1, round(len(value) * max_width / draw.textlength(value, font=font)) - 1)] + "…"
-        fitted.append((value, font))
-    heights = [round(font.size * 1.27) for _, font in fitted]
-    total = sum(heights) + (8 if lines and (first or second) else 0)
-    top = HEIGHT - margin - total
-    area = canvas.crop((margin, max(0, top - 15), WIDTH - margin, HEIGHT - margin))
-    gray = ImageStat.Stat(area.convert("L"))
-    mean, deviation = gray.mean[0], gray.stddev[0]
-    mode = ticket.design.readability
-    if mode == "auto":
-        mode = "strong" if deviation > 58 else ("minimal" if mean < 92 or mean > 186 else "soft")
-    color = ticket.design.text_color
-    if color == "auto":
-        color = "black" if mode == "minimal" and mean > 165 and deviation < 45 else "white"
-    fill = (0, 0, 0) if color == "black" else (255, 255, 255)
-    if mode == "soft":
-        overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-        pixels = overlay.load()
-        start = max(0, top - round(HEIGHT * .22))
-        for y in range(start, HEIGHT):
-            a = round(230 * ticket.design.strength * ((y - start) / max(1, HEIGHT - start)) ** 1.4)
-            for x in range(WIDTH):
-                pixels[x, y] = (0, 0, 0, a)
-        canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
-    elif mode == "strong":
-        layer = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-        box = ImageDraw.Draw(layer)
-        box.rounded_rectangle((margin - 13, top - 14, WIDTH - margin + 13, HEIGHT - margin + 12), radius=17, fill=(0, 0, 0, round(130 + 95 * ticket.design.strength)))
-        canvas = Image.alpha_composite(canvas.convert("RGBA"), layer).convert("RGB")
-    draw = ImageDraw.Draw(canvas)
-    y = top
-    for i, (value, font) in enumerate(fitted):
-        if i == len(lines) and i:
-            y += 8
-        text_width = draw.textlength(value, font=font)
-        pos = ticket.design.position
-        x = margin if pos == "bottom-left" else (WIDTH - margin - text_width if pos == "bottom-right" else (WIDTH - text_width) / 2)
-        shadow = {"off": 0, "light": 2, "strong": 4}[ticket.design.shadow]
-        draw.text((x, y), value, font=font, fill=fill, stroke_width=shadow, stroke_fill=(0, 0, 0) if color == "white" else (255, 255, 255))
-        y += heights[i]
-    png = io.BytesIO()
-    jpg = io.BytesIO()
+    with Image.open(source) as image:
+        canvas = cover(image, ticket.crop)
+    items, bounds, stroke = text_layout(ticket, ImageDraw.Draw(canvas))
+    left, top, right, bottom = bounds
+    if items:
+        gray = ImageStat.Stat(canvas.crop((left, max(0, top - 15), right, bottom)).convert("L"))
+        mean, deviation = gray.mean[0], gray.stddev[0]
+        mode = ticket.design.readability
+        if mode == "auto":
+            mode = "strong" if deviation > 58 else ("minimal" if mean < 92 or mean > 186 else "soft")
+        color = ticket.design.text_color
+        if color == "auto":
+            color = "black" if mode == "minimal" and mean > 165 and deviation < 45 else "white"
+        fill = (0, 0, 0) if color == "black" else (255, 255, 255)
+        if mode == "soft":
+            overlay = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+            overlay_draw = ImageDraw.Draw(overlay)
+            start = max(0, top - round(HEIGHT * .22))
+            for y in range(start, HEIGHT):
+                alpha = round(230 * ticket.design.strength * ((y - start) / max(1, HEIGHT - start)) ** 1.4)
+                overlay_draw.line((0, y, WIDTH, y), fill=(0, 0, 0, alpha))
+            canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
+        elif mode == "strong":
+            layer = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+            ImageDraw.Draw(layer).rounded_rectangle(
+                (left - 13, top - 14, right + 13, bottom + 12), radius=17,
+                fill=(0, 0, 0, round(130 + 95 * ticket.design.strength)))
+            canvas = Image.alpha_composite(canvas.convert("RGBA"), layer).convert("RGB")
+        draw = ImageDraw.Draw(canvas)
+        for value, font, x, y in items:
+            draw.text((x, y), value, font=font, anchor="lt", fill=fill, stroke_width=stroke,
+                      stroke_fill=(0, 0, 0) if color == "white" else (255, 255, 255))
+    canvas = apply_print_inset(canvas, ticket.design.print_inset)
+    png, jpg = io.BytesIO(), io.BytesIO()
+    # Preview, downloads and the worker share this exact framed image.
     canvas.save(png, format="PNG")
     canvas.save(jpg, format="JPEG", quality=QUALITY, optimize=True)
     return png.getvalue(), jpg.getvalue()

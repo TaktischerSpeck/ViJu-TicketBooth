@@ -192,8 +192,11 @@ async def preview(ticket: Ticket, request: Request):
 @app.post("/api/tickets/{id}/render", dependencies=[Depends(admin)])
 async def render_saved(id: uuid.UUID, request: Request):
     ticket = Ticket.model_validate(ticket_row(str(id)))
-    async with request.app.state.render_limiter:
-        await printing.render_ticket(ticket, str(id))
+    try:
+        async with request.app.state.render_limiter:
+            await printing.render_ticket(ticket, str(id))
+    except (ValueError, OSError) as exc:
+        raise HTTPException(422, str(exc)) from exc
     return {"png": f"/api/renders/{id}?format=png", "jpeg": f"/api/renders/{id}?format=jpeg"}
 
 
@@ -254,7 +257,7 @@ def get_job(id: uuid.UUID):
 @app.post("/api/print-jobs/{id}/retry", dependencies=[Depends(admin)])
 def retry(id: uuid.UUID):
     previous = job_row(str(id))
-    if previous["status"] not in ("failed", "completed", "transferred", "cancelled"):
+    if previous["status"] not in ("failed", "completed", "cancelled"):
         raise HTTPException(409, "Job is still active")
     return queue(previous["ticket_id"])
 
@@ -288,17 +291,8 @@ async def printer_status():
     value = Printer.model_validate(printer())
     bt = await bluetooth.status(value.mac) if value.mac else await bluetooth.status("")
     available = bluetooth.obex_available()
-    configured = bool(value.mac)
-    prerequisites_met = configured and bt["adapter_available"] and bt["device_known"] and bt["paired"] and bt["trusted"] and available
-    # An idle OBEX printer can disconnect after each transfer. A passive
-    # BlueZ snapshot cannot tell whether it is reachable for the next print.
-    if config.PRINTER_BACKEND == "mock":
-        ready = True
-    elif not prerequisites_met:
-        ready = False
-    else:
-        ready = True if bt["connected"] else None
-    return {"configured": configured, "backend": config.PRINTER_BACKEND, "bluetooth": bt, "obexftp": {"available": available, "channel": value.channel}, "prerequisites_met": prerequisites_met, "ready": ready}
+    ready = config.PRINTER_BACKEND == "mock" or (bool(value.mac) and bt["adapter_available"] and bt["device_known"] and bt["paired"] and bt["trusted"] and available)
+    return {"configured": bool(value.mac), "backend": config.PRINTER_BACKEND, "bluetooth": bt, "obexftp": {"available": available, "channel": value.channel}, "ready": ready}
 
 
 @app.post("/api/printer/setup", dependencies=[Depends(admin)])
@@ -306,8 +300,6 @@ async def setup_printer():
     value = Printer.model_validate(printer())
     if not value.mac:
         raise HTTPException(422, "Configure printer MAC first")
-    if (await bluetooth.status(value.mac))["paired"]:
-        return {"already_paired": True, "message": "BlueZ already has a pairing for this device"}
     return bluetooth_action("pair", value.mac)
 
 
@@ -319,19 +311,7 @@ async def trust_printer():
 
 @app.post("/api/printer/check", dependencies=[Depends(admin)])
 async def check_printer():
-    value = Printer.model_validate(printer())
-    result = await printer_status()
-    if config.PRINTER_BACKEND == "mock":
-        result["connection_test"] = {"attempted": False, "reachable": None, "error": "Mock backend has no Bluetooth connection"}
-    elif not value.mac:
-        result["connection_test"] = {"attempted": False, "reachable": False, "error": "Configure printer MAC first"}
-    elif not result["bluetooth"]["adapter_available"]:
-        result["connection_test"] = {"attempted": False, "reachable": False, "error": result["bluetooth"].get("error") or "Bluetooth adapter unavailable"}
-    else:
-        result["connection_test"] = await anyio.to_thread.run_sync(bluetooth.check_rfcomm, value.mac, value.channel)
-    if config.PRINTER_BACKEND != "mock":
-        result["ready"] = bool(result["prerequisites_met"] and result["connection_test"]["reachable"])
-    return result
+    return await printer_status()
 
 
 @app.post("/api/printer/forget", dependencies=[Depends(admin)])
@@ -371,7 +351,8 @@ def test_print():
     import threading
     def run():
         try:
-            state, error = printing.print_file(path), None
+            printing.print_file(path)
+            state, error = "completed", None
         except Exception as exc:
             state, error = "failed", str(exc)[:500]
         with connection() as db:

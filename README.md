@@ -56,21 +56,9 @@ cd frontend && npm run build
 
 Die API unter `/docs` dokumentiert die Endpunkte. Zustandsänderungen verlangen `X-Admin-Token`. Die Konfiguration unter `/etc/viju-ticketbooth/app.env` enthält Server-Defaults, der Drucker wird zur Laufzeit in SQLite gespeichert. WLAN-Schlüssel liegen ausschließlich in root-eigenen NetworkManager-Profilen.
 
-### Druckerdiagnose auf dem Pi
-
-`GET /api/printer/status` zeigt den passiven BlueZ-Zustand. `paired` und `trusted` sind gespeicherte Eigenschaften und können auch bei ausgeschaltetem Drucker `true` sein. `connected` zeigt nur eine gerade bestehende Verbindung. `prerequisites_met` zeigt die gespeicherten Voraussetzungen. `ready` ist beim echten Drucker ohne aktuelle Verbindung `null` (unbekannt), nicht `false`: Der OBEX-Kanal wird erst beim Verbindungstest oder Druck geöffnet.
-
-`POST /api/printer/check` versucht ohne Druckdatei eine Verbindung zum eingestellten RFCOMM-Kanal und liefert `connection_test.reachable` sowie bei Fehlschlag `connection_test.error`. Das `ready`-Feld bezieht sich in dieser Antwort auf den gerade ausgeführten Test. Ein erfolgreicher Verbindungstest beweist noch keinen Ausdruck; dafür ist der Testdruck vorgesehen. Das Admin-Token wird benötigt:
-
-```bash
-read -rsp 'Admin-Token: ' VIJU_TOKEN; echo
-curl -sS -X POST -H "X-Admin-Token: $VIJU_TOKEN" http://127.0.0.1:8000/api/printer/check | jq
-unset VIJU_TOKEN
-```
-
 ## Bekannte Grenzen
 
-- Der OBEX-Befehl `obexftp --nopath --noconn --uuid none --bluetooth MAC --channel N -p datei.jpg` stammt aus dem Bauplan und muss am konkreten Sprocket mit Firmware und Papier kalibriert werden. ObexFTP kann auch nach `Sending ... done` mit Exit-Code 255 enden. Solche Aufträge erhalten den Status `transferred`; das bestätigt den Transfer, keinen Papierausdruck.
+- Der OBEX-Befehl `obexftp --nopath --noconn --uuid none --bluetooth MAC --channel N -p datei.jpg` stammt aus dem Bauplan und muss am konkreten Sprocket mit Firmware und Papier kalibriert werden. Ein erfolgreicher Transfer bestätigt nicht zwingend einen tatsächlich abgeschlossenen Ausdruck.
 - Der Pi 3B+ nutzt einen WLAN-Chip. Während des Wechsels vom AP ins Heimnetz ist der AP kurz offline; bei Fehlschlag wird er wieder aktiviert. Ein unterbrechungsfreier Test ist mit dieser Ein-Radio-Architektur nicht möglich.
 - Das Admin-Token wird für die Browser-Sitzung gespeichert. Für Zugriff jenseits eines vertrauenswürdigen lokalen Netzes HTTPS und VPN/zusätzliche Authentisierung vorsehen.
 - Druckbreite und -höhe sind als 600 × 900 Pixel voreingestellt und müssen nach einem Testdruck für das konkrete Gerät angepasst werden.

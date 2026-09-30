@@ -12,6 +12,24 @@ class Crop(BaseModel):
     y: float = Field(0, ge=-1, le=1)
 
 
+class TextStyle(BaseModel):
+    font_size: float | None = Field(None, ge=4, le=48)
+    bold: bool | None = None
+    show_label: bool | None = None
+
+
+class TextStyles(BaseModel):
+    title: TextStyle = Field(default_factory=TextStyle)
+    date: TextStyle = Field(default_factory=TextStyle)
+    time: TextStyle = Field(default_factory=TextStyle)
+    cinema: TextStyle = Field(default_factory=TextStyle)
+    hall: TextStyle = Field(default_factory=TextStyle)
+    row: TextStyle = Field(default_factory=TextStyle)
+    seat: TextStyle = Field(default_factory=TextStyle)
+    format: TextStyle = Field(default_factory=TextStyle)
+    note: TextStyle = Field(default_factory=TextStyle)
+
+
 class Design(BaseModel):
     readability: Literal["minimal", "soft", "strong", "auto"] = "soft"
     text_color: Literal["auto", "white", "black"] = "auto"
@@ -19,6 +37,10 @@ class Design(BaseModel):
     position: Literal["bottom-left", "bottom-center", "bottom-right"] = "bottom-left"
     strength: float = Field(0.5, ge=0, le=1)
     safe_area: float = Field(0.065, ge=0.03, le=0.15)
+    print_inset: float = Field(0.03, ge=0, le=0.10)
+    font_family: Literal["sans", "serif", "mono"] = "sans"
+    base_font_size: float = Field(10, ge=4, le=24)
+    text_styles: TextStyles = Field(default_factory=TextStyles)
 
 
 class Ticket(BaseModel):
