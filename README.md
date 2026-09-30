@@ -58,9 +58,9 @@ Die API unter `/docs` dokumentiert die Endpunkte. Zustandsänderungen verlangen 
 
 ### Druckerdiagnose auf dem Pi
 
-`GET /api/printer/status` zeigt den passiven BlueZ-Zustand. `paired` und `trusted` sind gespeicherte Eigenschaften und können auch bei ausgeschaltetem Drucker `true` sein. `connected` zeigt nur eine gerade bestehende Verbindung. `ready` ist beim echten Drucker nur bei aktiver Verbindung `true`; `prerequisites_met` zeigt die gespeicherten Voraussetzungen.
+`GET /api/printer/status` zeigt den passiven BlueZ-Zustand. `paired` und `trusted` sind gespeicherte Eigenschaften und können auch bei ausgeschaltetem Drucker `true` sein. `connected` zeigt nur eine gerade bestehende Verbindung. `prerequisites_met` zeigt die gespeicherten Voraussetzungen. `ready` ist beim echten Drucker ohne aktuelle Verbindung `null` (unbekannt), nicht `false`: Der OBEX-Kanal wird erst beim Verbindungstest oder Druck geöffnet.
 
-`POST /api/printer/check` versucht ohne Druckdatei eine Verbindung zum eingestellten RFCOMM-Kanal und liefert `connection_test.reachable` sowie bei Fehlschlag `connection_test.error`. Ein erfolgreicher Test beweist weder einen abgeschlossenen OBEX-Transfer noch einen Ausdruck. Das Admin-Token wird benötigt:
+`POST /api/printer/check` versucht ohne Druckdatei eine Verbindung zum eingestellten RFCOMM-Kanal und liefert `connection_test.reachable` sowie bei Fehlschlag `connection_test.error`. Das `ready`-Feld bezieht sich in dieser Antwort auf den gerade ausgeführten Test. Ein erfolgreicher Verbindungstest beweist noch keinen Ausdruck; dafür ist der Testdruck vorgesehen. Das Admin-Token wird benötigt:
 
 ```bash
 read -rsp 'Admin-Token: ' VIJU_TOKEN; echo
@@ -70,7 +70,7 @@ unset VIJU_TOKEN
 
 ## Bekannte Grenzen
 
-- Der OBEX-Befehl `obexftp --nopath --noconn --uuid none --bluetooth MAC --channel N -p datei.jpg` stammt aus dem Bauplan und muss am konkreten Sprocket mit Firmware und Papier kalibriert werden. Ein erfolgreicher Transfer bestätigt nicht zwingend einen tatsächlich abgeschlossenen Ausdruck.
+- Der OBEX-Befehl `obexftp --nopath --noconn --uuid none --bluetooth MAC --channel N -p datei.jpg` stammt aus dem Bauplan und muss am konkreten Sprocket mit Firmware und Papier kalibriert werden. ObexFTP kann auch nach `Sending ... done` mit Exit-Code 255 enden. Solche Aufträge erhalten den Status `transferred`; das bestätigt den Transfer, keinen Papierausdruck.
 - Der Pi 3B+ nutzt einen WLAN-Chip. Während des Wechsels vom AP ins Heimnetz ist der AP kurz offline; bei Fehlschlag wird er wieder aktiviert. Ein unterbrechungsfreier Test ist mit dieser Ein-Radio-Architektur nicht möglich.
 - Das Admin-Token wird für die Browser-Sitzung gespeichert. Für Zugriff jenseits eines vertrauenswürdigen lokalen Netzes HTTPS und VPN/zusätzliche Authentisierung vorsehen.
 - Druckbreite und -höhe sind als 600 × 900 Pixel voreingestellt und müssen nach einem Testdruck für das konkrete Gerät angepasst werden.

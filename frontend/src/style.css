@@ -47,3 +47,4 @@
   .history-item,.job-item{flex-wrap:wrap}
   .history-item div,.job-item div{min-width:calc(100% - 70px)}
 }
+.status-dot.neutral{background:#d8a16a;box-shadow:0 0 0 4px #7d5b3d55}

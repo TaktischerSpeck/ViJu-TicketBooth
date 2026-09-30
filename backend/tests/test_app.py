@@ -3,11 +3,13 @@ import asyncio
 import importlib.machinery
 import importlib.util
 import json
+import subprocess
 from PIL import Image
 from fastapi.testclient import TestClient
 
 from app import config, database
 from app import main as main_module
+from app import printing
 from app.main import app
 from app.movies import sorted_posters
 from app.printing import command, process_one
@@ -41,14 +43,30 @@ def test_printer_status_distinguishes_saved_pairing_from_live_connection(monkeyp
 
     passive = asyncio.run(main_module.printer_status())
     assert passive["prerequisites_met"] is True
-    assert passive["ready"] is False
+    assert passive["ready"] is None
     checked = asyncio.run(main_module.check_printer())
     assert checked["connection_test"]["reachable"] is True
+    assert checked["ready"] is True
+    monkeypatch.setattr(main_module.bluetooth, "check_rfcomm", lambda _mac, _channel: {"attempted": True, "reachable": False, "error": "Connection refused"})
+    assert asyncio.run(main_module.check_printer())["ready"] is False
     def unexpected_pairing(*_args):
         raise AssertionError("Pairing should not run twice")
 
     monkeypatch.setattr(main_module, "bluetooth_action", unexpected_pairing)
     assert asyncio.run(main_module.setup_printer())["already_paired"] is True
+
+
+def test_obexftp_success_exit_255_is_only_a_transfer(monkeypatch, tmp_path):
+    monkeypatch.setattr(config, "PRINTER_BACKEND", "obexftp")
+    monkeypatch.setattr(printing, "setting", lambda *_args: {"mac": "C4:30:18:38:BD:E1", "channel": 4})
+    output = 'Connecting...\bdone Sending "ticket.jpg"... \b|\bdone Disconnecting...\bdone'
+    monkeypatch.setattr(printing.subprocess, "run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 255, "", output))
+    assert printing.print_file(tmp_path / "ticket.jpg") == "transferred"
+
+    monkeypatch.setattr(printing.subprocess, "run", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 255, "", 'Sending "ticket.jpg"... failed: rejected'))
+    import pytest
+    with pytest.raises(RuntimeError, match="OBEX transfer failed"):
+        printing.print_file(tmp_path / "ticket.jpg")
 
 
 def test_render_crop_metadata(tmp_path):

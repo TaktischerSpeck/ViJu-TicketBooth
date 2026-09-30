@@ -254,7 +254,7 @@ def get_job(id: uuid.UUID):
 @app.post("/api/print-jobs/{id}/retry", dependencies=[Depends(admin)])
 def retry(id: uuid.UUID):
     previous = job_row(str(id))
-    if previous["status"] not in ("failed", "completed", "cancelled"):
+    if previous["status"] not in ("failed", "completed", "transferred", "cancelled"):
         raise HTTPException(409, "Job is still active")
     return queue(previous["ticket_id"])
 
@@ -290,7 +290,14 @@ async def printer_status():
     available = bluetooth.obex_available()
     configured = bool(value.mac)
     prerequisites_met = configured and bt["adapter_available"] and bt["device_known"] and bt["paired"] and bt["trusted"] and available
-    ready = config.PRINTER_BACKEND == "mock" or (prerequisites_met and bt["connected"])
+    # An idle OBEX printer can disconnect after each transfer. A passive
+    # BlueZ snapshot cannot tell whether it is reachable for the next print.
+    if config.PRINTER_BACKEND == "mock":
+        ready = True
+    elif not prerequisites_met:
+        ready = False
+    else:
+        ready = True if bt["connected"] else None
     return {"configured": configured, "backend": config.PRINTER_BACKEND, "bluetooth": bt, "obexftp": {"available": available, "channel": value.channel}, "prerequisites_met": prerequisites_met, "ready": ready}
 
 
@@ -322,6 +329,8 @@ async def check_printer():
         result["connection_test"] = {"attempted": False, "reachable": False, "error": result["bluetooth"].get("error") or "Bluetooth adapter unavailable"}
     else:
         result["connection_test"] = await anyio.to_thread.run_sync(bluetooth.check_rfcomm, value.mac, value.channel)
+    if config.PRINTER_BACKEND != "mock":
+        result["ready"] = bool(result["prerequisites_met"] and result["connection_test"]["reachable"])
     return result
 
 
@@ -362,8 +371,7 @@ def test_print():
     import threading
     def run():
         try:
-            printing.print_file(path)
-            state, error = "completed", None
+            state, error = printing.print_file(path), None
         except Exception as exc:
             state, error = "failed", str(exc)[:500]
         with connection() as db:
