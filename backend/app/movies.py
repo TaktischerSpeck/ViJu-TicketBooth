@@ -1,5 +1,8 @@
 import hashlib
 import random
+import asyncio
+import os
+import tempfile
 import httpx
 from fastapi import HTTPException
 from .config import TMDB_TOKEN, DATA
@@ -7,6 +10,23 @@ from .schemas import POSTER
 
 BASE = "https://api.themoviedb.org/3"
 IMAGE = "https://image.tmdb.org/t/p/"
+POSTER_SIZE = "w780"
+
+
+def store_poster(target, content):
+    from PIL import Image
+    import io
+    with Image.open(io.BytesIO(content)) as image:
+        image.verify()
+    # Atomic publication also protects readers in the separate print worker.
+    fd, temporary = tempfile.mkstemp(dir=target.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(content)
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 async def tmdb(path, params=None):
@@ -30,21 +50,17 @@ def sorted_posters(data):
 
 
 async def cache_poster(path):
-    if not POSTER.fullmatch(path):
+    if not isinstance(path, str) or not POSTER.fullmatch(path):
         raise HTTPException(422, "Invalid poster path")
-    target = DATA / "cache" / (hashlib.sha256(path.encode()).hexdigest() + ".img")
+    target = DATA / "cache" / (hashlib.sha256((POSTER_SIZE + path).encode()).hexdigest() + ".img")
     if not target.exists():
         try:
             async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
-                response = await client.get(IMAGE + "original" + path)
+                response = await client.get(IMAGE + POSTER_SIZE + path)
                 response.raise_for_status()
                 if len(response.content) > 16 * 1024 * 1024:
                     raise HTTPException(413, "Poster exceeds size limit")
-                from PIL import Image
-                import io
-                image = Image.open(io.BytesIO(response.content))
-                image.verify()
-                target.write_bytes(response.content)
+                await asyncio.to_thread(store_poster, target, response.content)
         except (httpx.HTTPError, OSError, ValueError) as exc:
             raise HTTPException(502, "Poster unavailable") from exc
     return target

@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Film, Search, ImagePlus, Printer, Settings, Clock3, Download, RefreshCw, Plus, Check, Wifi, ChevronRight, RotateCcw } from 'lucide-react'
 import './style.css'
+import './preview.css'
+import { usePreview } from './usePreview'
 
 type Crop = { zoom: number; x: number; y: number }
 type Design = { readability: 'minimal'|'soft'|'strong'|'auto'; text_color: 'auto'|'white'|'black'; shadow: 'off'|'light'|'strong'; position: 'bottom-left'|'bottom-center'|'bottom-right'; strength: number; safe_area: number }
@@ -30,7 +32,6 @@ function App() {
   const [now, setNow] = useState<Movie[]>([])
   const [posters, setPosters] = useState<Poster[]>([])
   const [searching, setSearching] = useState(false)
-  const [preview, setPreview] = useState('')
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [history, setHistory] = useState<Ticket[]>([])
@@ -45,7 +46,9 @@ function App() {
   const uploadRef = useRef<HTMLInputElement>(null)
   const previewRef = useRef<HTMLImageElement>(null)
   const drag = useRef<{x: number; y: number; crop: Crop}|null>(null)
-  const latest = useRef(0)
+  const movieController = useRef<AbortController | null>(null)
+  const previewState = usePreview(ticket, token, Boolean(ticket.poster_path || ticket.asset_id))
+  const preview = previewState.url
   const patch = (p: Partial<Ticket>) => setTicket(old => ({...old, ...p}))
   const design = (p: Partial<Design>) => patch({ design: {...ticket.design, ...p} })
   const crop = (p: Partial<Crop>) => patch({ crop: {...ticket.crop, ...p} })
@@ -67,21 +70,10 @@ function App() {
   }, [])
   useEffect(() => {
     sessionStorage.setItem('viju-draft', JSON.stringify(ticket))
-    if (!ticket.poster_path && !ticket.asset_id) { setPreview(''); return }
-    const seq = ++latest.current
-    const timer = setTimeout(async () => {
-      try {
-        const response = await fetch('/api/preview', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Token': getToken() }, body: JSON.stringify(ticket) })
-        if (!response.ok) throw Error('Preview unavailable')
-        const url = URL.createObjectURL(await response.blob())
-        if (seq === latest.current) setPreview(old => { if (old.startsWith('blob:')) URL.revokeObjectURL(old); return url })
-        else URL.revokeObjectURL(url)
-      } catch { if (seq === latest.current) setPreview('') }
-    }, 350)
-    return () => clearTimeout(timer)
-  }, [ticket, token])
+  }, [ticket])
+  useEffect(() => () => movieController.current?.abort(), [])
   useEffect(() => {
-    if (query.trim().length < 2) { setResults([]); return }
+    if (query.trim().length < 2) { setResults([]); setSearching(false); return }
     const controller = new AbortController()
     const timer = setTimeout(async () => {
       setSearching(true)
@@ -95,15 +87,22 @@ function App() {
     return () => { clearTimeout(timer); controller.abort() }
   }, [query])
   async function selectMovie(movie: Movie) {
+    movieController.current?.abort()
+    const controller = new AbortController()
+    movieController.current = controller
     setQuery(''); setResults([]); setNotice('')
+    setPosters([])
+    patch({ title: movie.title, tmdb_id: movie.id, poster_path: movie.poster_path || null, asset_id: null, crop: {zoom:1,x:0,y:0} })
     try {
-      const gallery = await api<Poster[]>(`/movies/${movie.id}/posters`)
+      const gallery = await api<Poster[]>(`/movies/${movie.id}/posters`, { signal: controller.signal })
+      if (controller.signal.aborted) return
       setPosters(gallery)
       patch({ title: movie.title, tmdb_id: movie.id, poster_path: gallery[0]?.file_path || movie.poster_path || null, asset_id: null, crop: {zoom:1,x:0,y:0} })
-    } catch (e) { report(e) }
+    } catch (e) { if (!controller.signal.aborted) report(e) }
   }
   async function upload(file?: File) {
     if (!file) return
+    movieController.current?.abort()
     setBusy(true)
     try {
       const body = new FormData(); body.append('file', file)
@@ -142,7 +141,7 @@ function App() {
             <div className="searchbox"><Search size={19}/><input aria-label="Film suchen" placeholder="Filmtitel suchen …" value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&results[0]) selectMovie(results[0]);if(e.key==='Escape')setResults([])}}/>{searching&&<span className="spinner"/>}</div>
             {results.length>0 && <div className="results">{results.map(m=><button key={m.id} onClick={()=>selectMovie(m)}>{m.poster_path?<img src={img(m.poster_path,'w92')} alt=""/>:<span className="mini-blank"/>}<span><b>{m.title}</b><small>{m.release_date?.slice(0,4)||'–'}</small></span><ChevronRight size={16}/></button>)}</div>}
             {now.length>0&&!query&&<><div className="subhead">AKTUELL IM KINO <button onClick={()=>act(async()=>selectMovie(await api<Movie>('/movies/random')))}>Zufallsfilm ↗</button></div><div className="movie-strip">{now.filter(m=>m.poster_path).slice(0,12).map(m=><button key={m.id} onClick={()=>selectMovie(m)} title={m.title}><img src={img(m.poster_path,'w185')} alt={m.title}/></button>)}</div></>}
-            <div className="split-actions"><button className="text-action" onClick={()=>{patch({tmdb_id:null,poster_path:null,asset_id:null,title:''});setPosters([])}}><Plus size={16}/> Eigener Filmtitel</button><button className="text-action" onClick={()=>uploadRef.current?.click()}><ImagePlus size={16}/> Bild hochladen</button></div>
+            <div className="split-actions"><button className="text-action" onClick={()=>{movieController.current?.abort();patch({tmdb_id:null,poster_path:null,asset_id:null,title:''});setPosters([])}}><Plus size={16}/> Eigener Filmtitel</button><button className="text-action" onClick={()=>uploadRef.current?.click()}><ImagePlus size={16}/> Bild hochladen</button></div>
             <input ref={uploadRef} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={e=>upload(e.target.files?.[0])}/>
             <label className="field">Filmtitel<input value={ticket.title} maxLength={160} placeholder="z. B. Dune: Part Two" onChange={e=>patch({title:e.target.value})}/></label>
             {posters.length>0&&<><div className="subhead">POSTER AUSWÄHLEN <small>ENGLISH FIRST</small></div><div className="poster-strip">{posters.map((p,i)=><button key={p.file_path} className={ticket.poster_path===p.file_path?'selected':''} onClick={()=>patch({poster_path:p.file_path,asset_id:null,crop:{zoom:1,x:0,y:0}})} title={`${p.iso_639_1||'ohne Sprache'} · ${p.width} × ${p.height}`}><img loading="lazy" src={img(p.file_path,'w185')} alt={`Poster ${i+1}`}/><span>{p.iso_639_1||'–'}</span></button>)}</div></>}
@@ -163,7 +162,7 @@ function App() {
         </section>
         <section className="preview-side"><div className="preview-panel"><div className="preview-heading"><div><span className="eyebrow">LIVE-VORSCHAU</span><h2>Dein Sammlerstück</h2></div><span className="format-tag">2 × 3 FORMAT</span></div>
           <div className="ticket-stage"><div className="ticket-image" onPointerDown={e=>{if(!activePoster)return;drag.current={x:e.clientX,y:e.clientY,crop:{...ticket.crop}};e.currentTarget.setPointerCapture(e.pointerId)}} onPointerMove={handleMove} onPointerUp={()=>drag.current=null} onPointerCancel={()=>drag.current=null}>
-            {preview?<img ref={previewRef} src={preview} alt="Exakte Druckvorschau"/>:activePoster?<div className="loading-preview"><img src={activePoster} alt="Poster"/><span>Vorschau wird gerendert …</span></div>:<div className="empty-preview"><Film size={48}/><strong>Die Leinwand wartet.</strong><span>Wähle einen Film oder lade dein eigenes Poster hoch.</span></div>}
+            {preview?<img ref={previewRef} src={preview} alt="Exakte Druckvorschau"/>:activePoster?<div className="loading-preview"><img ref={previewRef} src={activePoster} alt="Ausgewähltes Poster"/><span role={previewState.error?'alert':'status'}>{previewState.error || 'Vorschau wird gerendert …'}</span></div>:<div className="empty-preview"><Film size={48}/><strong>Die Leinwand wartet.</strong><span>Wähle einen Film oder lade dein eigenes Poster hoch.</span></div>}
           </div></div><p className="preview-hint">Poster ziehen, um den Bildausschnitt zu verschieben. Die Vorschau stammt aus dem Druckrenderer.</p>
           <div className="print-actions"><button className="primary" disabled={busy||!activePoster} onClick={print}><Printer size={18}/>{busy?'Bitte warten …':'Ticket drucken'}</button><button disabled={busy||!activePoster} onClick={()=>act(save)}><Check size={18}/> Speichern</button></div><div className="download-actions"><button disabled={!activePoster} onClick={()=>renderFile('png')}><Download size={15}/> PNG</button><button disabled={!activePoster} onClick={()=>renderFile('jpeg')}><Download size={15}/> JPEG</button></div>
         </div></section>

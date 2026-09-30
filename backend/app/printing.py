@@ -2,6 +2,7 @@ import json
 import logging
 import subprocess
 import time
+import anyio
 from pathlib import Path
 from . import config
 from .database import connection, now, setting
@@ -39,12 +40,12 @@ def print_file(path):
 
 
 async def render_ticket(ticket, job_id):
-    source = source_for(ticket)
+    source = await anyio.to_thread.run_sync(source_for, ticket)
     if source is None:
         source = await cache_poster(ticket.poster_path)
-    png, jpg = render(ticket, source)
-    (config.DATA / "renders" / f"{job_id}.png").write_bytes(png)
-    (config.DATA / "print" / f"{job_id}.jpg").write_bytes(jpg)
+    png, jpg = await anyio.to_thread.run_sync(render, ticket, source)
+    await anyio.to_thread.run_sync((config.DATA / "renders" / f"{job_id}.png").write_bytes, png)
+    await anyio.to_thread.run_sync((config.DATA / "print" / f"{job_id}.jpg").write_bytes, jpg)
     return jpg
 
 

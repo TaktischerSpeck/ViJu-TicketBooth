@@ -5,9 +5,10 @@ import json
 import os
 import subprocess
 import uuid
+import anyio
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Depends, Header, HTTPException, UploadFile, File, Response
+from fastapi import FastAPI, Depends, Header, HTTPException, UploadFile, File, Response, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -19,6 +20,7 @@ from .schemas import Ticket, Printer, Wifi, Preset
 @asynccontextmanager
 async def lifespan(app):
     init_db()
+    app.state.render_limiter = anyio.CapacityLimiter(1)
     yield
 
 
@@ -169,22 +171,29 @@ def duplicate(id: uuid.UUID):
 
 
 @app.post("/api/preview", dependencies=[Depends(admin)])
-async def preview(ticket: Ticket):
-    source = printing.source_for(ticket)
-    if source is None:
-        source = await movies.cache_poster(ticket.poster_path)
+async def preview(ticket: Ticket, request: Request):
     from .render import render
     try:
-        png, _ = render(ticket, source)
+        async with request.app.state.render_limiter:
+            if await request.is_disconnected():
+                return Response(status_code=204)
+            source = await anyio.to_thread.run_sync(printing.source_for, ticket)
+            if source is None:
+                source = await movies.cache_poster(ticket.poster_path)
+            if await request.is_disconnected():
+                return Response(status_code=204)
+            # Keep the limiter until the thread finishes, including on disconnect.
+            png, _ = await anyio.to_thread.run_sync(render, ticket, source)
     except (ValueError, OSError) as exc:
         raise HTTPException(422, str(exc)) from exc
     return Response(png, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
 @app.post("/api/tickets/{id}/render", dependencies=[Depends(admin)])
-async def render_saved(id: uuid.UUID):
+async def render_saved(id: uuid.UUID, request: Request):
     ticket = Ticket.model_validate(ticket_row(str(id)))
-    await printing.render_ticket(ticket, str(id))
+    async with request.app.state.render_limiter:
+        await printing.render_ticket(ticket, str(id))
     return {"png": f"/api/renders/{id}?format=png", "jpeg": f"/api/renders/{id}?format=jpeg"}
 
 
