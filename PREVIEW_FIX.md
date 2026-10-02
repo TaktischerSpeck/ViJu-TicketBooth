@@ -33,6 +33,9 @@ npm --prefix frontend run build
 sudo systemctl restart viju-ticketbooth-api viju-ticketbooth-worker
 ```
 
+```bash
+cd /opt/viju-ticketbooth && git status --short && git pull --ff-only origin mvp && backend/.venv/bin/python -m pip install -r backend/requirements.txt && npm --prefix frontend ci && npm --prefix frontend run build &&sudo systemctl restart viju-ticketbooth-api viju-ticketbooth-worker
+```
 Nach dem Neustart die API-Startphase abwarten und `/api/health` prüfen. Für die Tests kann `requirements-dev.txt` anstelle von `requirements.txt` installiert werden. Kein pauschaler Neuinstallationslauf ist erforderlich.
 
 Browserabnahme: Seite neu laden, Poster langsam und schnell wechseln, Ticketdetails ändern, Poster entfernen, Ticket speichern und erneut öffnen. Die angezeigte Preview muss stets zur aktuellen Auswahl passen; ein Fehler darf nicht als endloser Ladezustand erscheinen. Während eines Renders Health und Print-Jobs prüfen. Kalten/warmen Cache und Pi-Throttling dokumentieren.

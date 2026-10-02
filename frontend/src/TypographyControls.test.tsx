@@ -9,6 +9,8 @@ afterEach(cleanup)
 
 it('loads old designs with defaults and scales only automatic fields', () => {
   const design = normalizeDesign({safe_area:.08})
+  expect(design.base_font_size).toBe(15)
+  expect(design.font_family).toBe('barlow')
   design.text_styles.seat.font_size = 12
   design.base_font_size = 15
   expect(effectiveSize(design,'title')).toBe(28.5)

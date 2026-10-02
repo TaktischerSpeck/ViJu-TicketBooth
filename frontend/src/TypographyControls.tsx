@@ -8,7 +8,7 @@ export function TypographyControls({design, onChange}: Props) {
   return <div className="typography-controls">
     <div className="form-grid">
       <label className="field">Schriftart für alle Elemente<select value={design.font_family} onChange={e=>onChange({font_family:e.target.value as Design['font_family']})}>
-        <option value="sans">DejaVu Sans</option><option value="serif">DejaVu Serif</option><option value="mono">DejaVu Sans Mono</option>
+        <option value="barlow">Barlow Condensed</option><option value="sans">DejaVu Sans</option><option value="serif">DejaVu Serif</option><option value="mono">DejaVu Sans Mono</option>
       </select></label>
       <label className="field">Basis-Schriftgröße<input aria-label="Basis-Schriftgröße" type="number" min="4" max="24" step=".5" value={design.base_font_size} onChange={e=>{const n=Number(e.target.value);if(n>=4&&n<=24)onChange({base_font_size:n})}}/></label>
     </div>

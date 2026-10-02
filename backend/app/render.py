@@ -1,25 +1,32 @@
 import io
 import math
+import re
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageStat
 from .config import WIDTH, HEIGHT, QUALITY
 
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+BARLOW_FONTS = (Path(__file__).resolve().parent / "fonts" / "BarlowCondensed-Regular.ttf",
+                Path(__file__).resolve().parent / "fonts" / "BarlowCondensed-SemiBold.ttf")
 FONT_FAMILIES = {
     "serif": ("DejaVuSerif.ttf", "DejaVuSerif-Bold.ttf"),
     "mono": ("DejaVuSansMono.ttf", "DejaVuSansMono-Bold.ttf"),
 }
-PRIMARY = ("time", "hall", "row", "seat", "format")
+PRIMARY = ("time", "hall", "row", "seat")
 SECONDARY = ("date", "cinema", "note")
 LABELS = {"date": "Datum", "time": "Uhrzeit", "cinema": "Kino", "hall": "Saal",
-          "row": "Reihe", "seat": "Sitzplatz", "format": "Format", "note": "Zusatztext"}
+          "row": "Reihe", "seat": "Sitzplatz", "note": "Zusatztext"}
 
 
 def element_text(ticket, key):
     value = getattr(ticket, key).strip()
     if not value:
         return ""
+    if key == "date":
+        match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", value)
+        if match:
+            value = f"{match[3]}.{match[2]}.{match[1]}"
     style = getattr(ticket.design.text_styles, key)
     show_label = style.show_label if style.show_label is not None else key in ("hall", "row", "seat")
     return f"{LABELS[key]} {value}" if show_label and key in LABELS else value
@@ -40,7 +47,9 @@ def element_font(design, key):
     style = getattr(design.text_styles, key)
     bold = style.bold if style.bold is not None else key == "title"
     path = FONT_BOLD if bold else FONT_REGULAR
-    if design.font_family in FONT_FAMILIES:
+    if design.font_family == "barlow":
+        path = str(BARLOW_FONTS[int(bold)])
+    elif design.font_family in FONT_FAMILIES:
         path = str(Path(FONT_REGULAR).parent / FONT_FAMILIES[design.font_family][int(bold)])
     # Preserve former default sizes and scale with print resolution.
     size = max(1, round(font_points(design, key) * 2.16 * WIDTH / 600))

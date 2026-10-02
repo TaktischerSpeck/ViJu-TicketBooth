@@ -12,8 +12,8 @@ def ticket(**kwargs):
 
 def test_relative_sizes_and_independent_overrides():
     design = Design()
-    assert renderer.font_points(design, "row") == 10
-    assert renderer.font_points(design, "title") == 19
+    assert renderer.font_points(design, "row") == 15
+    assert renderer.font_points(design, "title") == 28.5
     design.text_styles.seat.font_size = 12
     design.base_font_size = 15
     assert renderer.font_points(design, "row") == 15
@@ -36,7 +36,12 @@ def test_labels_can_be_disabled_individually_and_empty_values_stay_empty():
     assert renderer.metadata(value)[0] == "Saal 2 • 3"
 
 
-@pytest.mark.parametrize("family", ["sans", "serif", "mono"])
+def test_legacy_iso_date_uses_german_print_format():
+    value = ticket(date="1999-09-02")
+    assert renderer.metadata(value)[1] == "02.09.1999"
+
+
+@pytest.mark.parametrize("family", ["barlow", "sans", "serif", "mono"])
 @pytest.mark.parametrize("position", ["bottom-left", "bottom-center", "bottom-right"])
 def test_rendered_text_stays_in_safe_area(tmp_path, family, position):
     source = tmp_path / "poster.png"
@@ -81,8 +86,8 @@ def test_print_inset_preserves_canvas_size_and_moves_content():
 
 def test_old_tickets_receive_defaults_and_invalid_fonts_are_rejected():
     old = ticket(design={"safe_area": .08})
-    assert old.design.font_family == "sans"
-    assert old.design.base_font_size == 10
+    assert old.design.font_family == "barlow"
+    assert old.design.base_font_size == 15
     assert old.design.text_styles.seat.font_size is None
     with pytest.raises(ValidationError):
         Design(font_family="/tmp/font.ttf")

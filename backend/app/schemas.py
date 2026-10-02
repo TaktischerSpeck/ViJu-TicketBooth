@@ -26,7 +26,6 @@ class TextStyles(BaseModel):
     hall: TextStyle = Field(default_factory=TextStyle)
     row: TextStyle = Field(default_factory=TextStyle)
     seat: TextStyle = Field(default_factory=TextStyle)
-    format: TextStyle = Field(default_factory=TextStyle)
     note: TextStyle = Field(default_factory=TextStyle)
 
 
@@ -38,8 +37,8 @@ class Design(BaseModel):
     strength: float = Field(0.5, ge=0, le=1)
     safe_area: float = Field(0.065, ge=0.03, le=0.15)
     print_inset: float = Field(0.03, ge=0, le=0.10)
-    font_family: Literal["sans", "serif", "mono"] = "sans"
-    base_font_size: float = Field(10, ge=4, le=24)
+    font_family: Literal["barlow", "sans", "serif", "mono"] = "barlow"
+    base_font_size: float = Field(15, ge=4, le=24)
     text_styles: TextStyles = Field(default_factory=TextStyles)
 
 
@@ -54,7 +53,6 @@ class Ticket(BaseModel):
     hall: str = Field("", max_length=30)
     row: str = Field("", max_length=20)
     seat: str = Field("", max_length=20)
-    format: str = Field("", max_length=32)
     note: str = Field("", max_length=120)
     crop: Crop = Field(default_factory=Crop)
     design: Design = Field(default_factory=Design)
