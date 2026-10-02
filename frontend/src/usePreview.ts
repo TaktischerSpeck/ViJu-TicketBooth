@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react'
 
 type Preview = { key: string; url: string; error: string }
 
-export function usePreview(ticket: unknown, token: string, enabled: boolean) {
+export function usePreview(ticket: unknown, enabled: boolean) {
   const body = JSON.stringify(ticket)
-  const key = JSON.stringify([body, token])
+  const key = body
   const [result, setResult] = useState<Preview | null>(null)
   useEffect(() => {
     setResult(null)
@@ -15,7 +15,7 @@ export function usePreview(ticket: unknown, token: string, enabled: boolean) {
       try {
         const response = await fetch('/api/preview', {
           method: 'POST', signal: controller.signal,
-          headers: { 'Content-Type': 'application/json', 'X-Admin-Token': token },
+          headers: { 'Content-Type': 'application/json' },
           body,
         })
         if (!response.ok) throw Error(`Vorschau nicht verfügbar (HTTP ${response.status}). Ändere die Auswahl, um es erneut zu versuchen.`)
@@ -32,7 +32,7 @@ export function usePreview(ticket: unknown, token: string, enabled: boolean) {
       controller.abort()
       if (url) URL.revokeObjectURL(url)
     }
-  }, [key, body, token, enabled])
+  }, [key, enabled])
   // Invalidate synchronously during render, before effect cleanup or the debounce.
   const current = enabled && result?.key === key ? result : null
   return { url: current?.url || '', error: current?.error || '' }

@@ -170,7 +170,7 @@ def duplicate(id: uuid.UUID):
     return create_ticket(Ticket.model_validate(original))
 
 
-@app.post("/api/preview", dependencies=[Depends(admin)])
+@app.post("/api/preview")
 async def preview(ticket: Ticket, request: Request):
     from .render import render
     try:

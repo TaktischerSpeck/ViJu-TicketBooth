@@ -50,7 +50,7 @@ function App() {
   const previewRef = useRef<HTMLImageElement>(null)
   const drag = useRef<{x: number; y: number; crop: Crop}|null>(null)
   const movieController = useRef<AbortController | null>(null)
-  const previewState = usePreview(ticket, token, Boolean(ticket.poster_path || ticket.asset_id))
+  const previewState = usePreview(ticket, Boolean(ticket.poster_path || ticket.asset_id))
   const preview = previewState.url
   const patch = (p: Partial<Ticket>) => setTicket(old => ({...old, ...p}))
   const design = (p: Partial<Design>) => setTicket(old => ({...old, design:normalizeDesign({...old.design, ...p})}))

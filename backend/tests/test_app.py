@@ -57,7 +57,7 @@ def test_upload_render_print_and_idempotency(tmp_path, monkeypatch):
         bad = client.post("/api/uploads/images", files={"file": ("bad.png", b"not-an-image", "image/png")}, headers=auth)
         assert bad.status_code == 415
         body = example(asset_id)
-        preview = client.post("/api/preview", json=body, headers=auth)
+        preview = client.post("/api/preview", json=body)
         assert preview.status_code == 200
         ticket = client.post("/api/tickets", json=body, headers=auth)
         assert ticket.status_code == 200

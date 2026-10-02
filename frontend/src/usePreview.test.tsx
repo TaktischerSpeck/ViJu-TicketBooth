@@ -25,7 +25,7 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
 const start = async () => { await act(async () => { vi.advanceTimersByTime(350) }) }
 
 it('aborts A and keeps B when A responds after B', async () => {
-  const hook = renderHook(({ poster }) => usePreview({ poster }, 'token', true), { initialProps: { poster: 'A' } })
+  const hook = renderHook(({ poster }) => usePreview({ poster }, true), { initialProps: { poster: 'A' } })
   await start()
   hook.rerender({ poster: 'B' })
   expect(requests[0].signal.aborted).toBe(true)
@@ -42,7 +42,7 @@ it('aborts A and keeps B when A responds after B', async () => {
 
 it('does not publish a blob decoded after removal of the poster', async () => {
   const blob = deferred<Blob>()
-  const hook = renderHook(({ enabled }) => usePreview({ poster: 'A' }, 'token', enabled), { initialProps: { enabled: true } })
+  const hook = renderHook(({ enabled }) => usePreview({ poster: 'A' }, enabled), { initialProps: { enabled: true } })
   await start()
   await act(async () => { requests[0].response.resolve(response(blob.promise)) })
   hook.rerender({ enabled: false })
@@ -52,7 +52,7 @@ it('does not publish a blob decoded after removal of the poster', async () => {
 })
 
 it('invalidates a completed preview immediately and clears debounce on unmount', async () => {
-  const hook = renderHook(({ poster }) => usePreview({ poster }, 'token', true), { initialProps: { poster: 'A' } })
+  const hook = renderHook(({ poster }) => usePreview({ poster }, true), { initialProps: { poster: 'A' } })
   await start()
   await act(async () => { requests[0].response.resolve(response()) })
   hook.rerender({ poster: 'B' })
@@ -64,7 +64,7 @@ it('invalidates a completed preview immediately and clears debounce on unmount',
 })
 
 it('shows a failure and recovers after a new selection', async () => {
-  const hook = renderHook(({ poster }) => usePreview({ poster }, 'token', true), { initialProps: { poster: 'A' } })
+  const hook = renderHook(({ poster }) => usePreview({ poster }, true), { initialProps: { poster: 'A' } })
   await start()
   await act(async () => { requests[0].response.resolve({ ok: false, status: 422 } as Response) })
   expect(hook.result.current.error).toContain('422')
@@ -76,7 +76,7 @@ it('shows a failure and recovers after a new selection', async () => {
 })
 
 it('does not reuse a revoked URL when switching back to A', async () => {
-  const hook = renderHook(({ poster }) => usePreview({ poster }, 'token', true), { initialProps: { poster: 'A' } })
+  const hook = renderHook(({ poster }) => usePreview({ poster }, true), { initialProps: { poster: 'A' } })
   await start()
   await act(async () => { requests[0].response.resolve(response()) })
   hook.rerender({ poster: 'B' })

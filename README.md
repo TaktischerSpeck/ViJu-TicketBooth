@@ -54,7 +54,7 @@ cd frontend && npm run build
 - `deploy/network/viju-network`: privilegierter NetworkManager-Helfer für AP/Recovery
 - `frontend/`: mobile React-Oberfläche
 
-Die API unter `/docs` dokumentiert die Endpunkte. Zustandsänderungen verlangen `X-Admin-Token`. Die Konfiguration unter `/etc/viju-ticketbooth/app.env` enthält Server-Defaults, der Drucker wird zur Laufzeit in SQLite gespeichert. WLAN-Schlüssel liegen ausschließlich in root-eigenen NetworkManager-Profilen.
+Die API unter `/docs` dokumentiert die Endpunkte. Die Live-Vorschau ist ohne Admin-Token abrufbar; Zustandsänderungen verlangen `X-Admin-Token`. Die Konfiguration unter `/etc/viju-ticketbooth/app.env` enthält Server-Defaults, der Drucker wird zur Laufzeit in SQLite gespeichert. WLAN-Schlüssel liegen ausschließlich in root-eigenen NetworkManager-Profilen.
 
 ## Bekannte Grenzen
 
