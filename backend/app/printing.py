@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import subprocess
 import time
 import anyio
@@ -14,6 +15,20 @@ log = logging.getLogger(__name__)
 
 def command(mac, channel, path):
     return ["obexftp", "--nopath", "--noconn", "--uuid", "none", "--bluetooth", mac, "--channel", str(channel), "-p", str(path)]
+
+
+def transfer_result(result):
+    # obexftp exits with -ret; a successful PUT returns 1 and becomes exit 255.
+    output = re.sub(r"\x08[|/\\-]", "", result.stderr or "")
+    combined = output + "\n" + (result.stdout or "")
+    sent = bool(re.search(r'Sending "[^"\r\n]+"\.\.\.[^\r\n]*\bdone\b', output))
+    failed = bool(re.search(r"failed:|(?:^|\n)Error:|The operation failed", combined, re.IGNORECASE))
+    if not failed and (result.returncode == 0 or (result.returncode == 255 and sent)):
+        return True, ""
+    details = [line.strip() for line in combined.splitlines()
+               if re.search(r"failed:|error:|out of range|turned off|rejected|return code", line, re.IGNORECASE)]
+    detail = "; ".join(details)[-300:] if details else "Sendeabschluss nicht bestätigt"
+    return False, f"OBEX-Transfer fehlgeschlagen (Exit {result.returncode}): {detail}"
 
 
 def source_for(ticket):
@@ -35,8 +50,11 @@ def print_file(path):
     if not printer.mac:
         raise RuntimeError("Printer MAC not configured")
     result = subprocess.run(command(printer.mac, printer.channel, path), shell=False, capture_output=True, text=True, timeout=config.TIMEOUT, check=False)
-    if result.returncode:
-        raise RuntimeError(f"OBEX transfer failed (exit {result.returncode}): {result.stderr[-300:]}")
+    success, error = transfer_result(result)
+    if not success:
+        raise RuntimeError(error)
+    if result.returncode == 255:
+        log.info("OBEX PUT completed; obexftp returned its success value as exit 255")
 
 
 async def render_ticket(ticket, job_id):

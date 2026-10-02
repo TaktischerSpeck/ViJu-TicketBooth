@@ -102,8 +102,8 @@ Der AP läuft bewusst **nicht dauerhaft parallel** zum Heim-WLAN. Das WLAN-Passw
 
 1. Drucker laden und einschalten. Bluetooth am Pi aktivieren: `systemctl status bluetooth`.
 2. In **Einstellungen → HP Sprocket** die MAC-Adresse und den OBEX-Channel eintragen, z. B. Channel 4. Die MAC muss zum eigenen Gerät gehören.
-3. **Pairing** löst nur eine kurzzeitige Suche nach *dieser* MAC über BlueZ aus. Es gibt keine Geräteliste. Anschließend **Vertrauen** und **Status prüfen** verwenden.
-4. `Connected: false` ist in Ruhe normal. Entscheidend sind Adapter, Gerät bekannt, Paired, Trusted, `obexftp` und Channel.
+3. **Pairing** löst nur eine kurzzeitige Suche nach *dieser* MAC über BlueZ aus. Es gibt keine Geräteliste. Anschließend **Vertrauen** und **Verbindung prüfen** verwenden.
+4. Die Verbindungsprüfung öffnet kurz den konfigurierten Bluetooth-Druckkanal, ohne Daten zu senden. Der normale Status zeigt bis dahin „Nicht geprüft“. `Connected: false` ist in Ruhe normal; Pairing und Vertrauen allein belegen nicht, dass der Drucker eingeschaltet ist.
 5. `PRINTER_BACKEND=obexftp` setzen, API und Worker neu starten und **Testdruck** auslösen.
 6. In **Historie → Druckaufträge** den Status prüfen. Bei Fehlern: `journalctl -u viju-ticketbooth-worker -f`.
 

@@ -1,5 +1,6 @@
 import asyncio
 import shutil
+import socket
 from dbus_next.aio import MessageBus
 from dbus_next import BusType, Variant
 from dbus_next.service import ServiceInterface, method
@@ -123,3 +124,16 @@ async def device_action(mac, action):
 
 def obex_available():
     return shutil.which("obexftp") is not None
+
+
+def probe_rfcomm(mac, channel, timeout=6):
+    """Try the configured print channel without sending data or a print job."""
+    if not hasattr(socket, "AF_BLUETOOTH") or not hasattr(socket, "BTPROTO_RFCOMM"):
+        return False, "Bluetooth-Sockets sind auf diesem System nicht verfügbar."
+    try:
+        with socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM) as connection:
+            connection.settimeout(timeout)
+            connection.connect((mac, channel))
+        return True, None
+    except OSError as exc:
+        return False, f"Bluetooth-Verbindung fehlgeschlagen: {exc}"

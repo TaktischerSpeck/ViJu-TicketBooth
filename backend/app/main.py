@@ -286,13 +286,33 @@ def set_printer(value: Printer):
     return value
 
 
-@app.get("/api/printer/status")
-async def printer_status():
+async def printer_status(probe=False):
     value = Printer.model_validate(printer())
-    bt = await bluetooth.status(value.mac) if value.mac else await bluetooth.status("")
+    bt = await bluetooth.status(value.mac)
     available = bluetooth.obex_available()
-    ready = config.PRINTER_BACKEND == "mock" or (bool(value.mac) and bt["adapter_available"] and bt["device_known"] and bt["paired"] and bt["trusted"] and available)
-    return {"configured": bool(value.mac), "backend": config.PRINTER_BACKEND, "bluetooth": bt, "obexftp": {"available": available, "channel": value.channel}, "ready": ready}
+    setup_ready = bool(value.mac) and bt["adapter_available"] and bt["device_known"] and bt["paired"] and bt["trusted"] and available
+    reachable, check_error = None, None
+    if probe and config.PRINTER_BACKEND != "mock":
+        if not value.mac:
+            check_error = "Zuerst die Drucker-MAC speichern."
+        elif not bt["adapter_available"]:
+            check_error = "Bluetooth-Adapter nicht verfügbar."
+        else:
+            with connection() as db:
+                printing_now = db.execute("SELECT 1 FROM jobs WHERE status='printing' LIMIT 1").fetchone()
+            if printing_now:
+                check_error = "Während eines Druckauftrags ist keine Verbindungsprüfung möglich."
+            else:
+                reachable, check_error = await anyio.to_thread.run_sync(bluetooth.probe_rfcomm, value.mac, value.channel)
+    return {"configured": bool(value.mac), "backend": config.PRINTER_BACKEND, "bluetooth": bt,
+            "obexftp": {"available": available, "channel": value.channel},
+            "setup_ready": setup_ready, "reachable": reachable, "check_error": check_error,
+            "ready": config.PRINTER_BACKEND == "mock" or (setup_ready and reachable is True)}
+
+
+@app.get("/api/printer/status")
+async def get_printer_status():
+    return await printer_status()
 
 
 @app.post("/api/printer/setup", dependencies=[Depends(admin)])
@@ -311,7 +331,7 @@ async def trust_printer():
 
 @app.post("/api/printer/check", dependencies=[Depends(admin)])
 async def check_printer():
-    return await printer_status()
+    return await printer_status(probe=True)
 
 
 @app.post("/api/printer/forget", dependencies=[Depends(admin)])
