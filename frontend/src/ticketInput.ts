@@ -5,6 +5,16 @@ export function germanDate(value: string): string {
   return digits.length === 8 ? `${digits.slice(0,2)}.${digits.slice(2,4)}.${digits.slice(4)}` : value
 }
 
+export function formatGermanDateInput(value: string, inputType = ''): string {
+  const digits = value.replace(/\D/g, '').slice(0, 8)
+  if (digits.length < 2) return digits
+  const deleting = inputType.startsWith('delete')
+  if (digits.length === 2) return deleting ? digits : `${digits}.`
+  if (digits.length < 4) return `${digits.slice(0, 2)}.${digits.slice(2)}`
+  if (digits.length === 4) return deleting ? `${digits.slice(0, 2)}.${digits.slice(2)}` : `${digits.slice(0, 2)}.${digits.slice(2)}.`
+  return `${digits.slice(0, 2)}.${digits.slice(2, 4)}.${digits.slice(4)}`
+}
+
 export function validGermanDate(value: string): boolean {
   if (!value) return true
   const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value)

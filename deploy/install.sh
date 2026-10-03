@@ -33,15 +33,14 @@ install -d -m 0750 -o viju -g viju /var/lib/viju-ticketbooth
 install -d -m 0700 /etc/viju-ticketbooth
 if [ ! -f /etc/viju-ticketbooth/access.env ]; then
   ap_password="$(python3 -c 'import secrets,string; print("".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(20)))')"
-  admin_token="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
-  printf 'SETUP_AP_PASSWORD=%s\nVIJU_ADMIN_TOKEN=%s\n' "$ap_password" "$admin_token" > /etc/viju-ticketbooth/access.env
+  printf 'SETUP_AP_PASSWORD=%s\n' "$ap_password" > /etc/viju-ticketbooth/access.env
   chmod 0600 /etc/viju-ticketbooth/access.env
 fi
 if [ ! -f /etc/viju-ticketbooth/app.env ]; then
-  admin_token="$(sed -n 's/^VIJU_ADMIN_TOKEN=//p' /etc/viju-ticketbooth/access.env)"
-  printf 'VIJU_DATA_DIR=/var/lib/viju-ticketbooth\nVIJU_ADMIN_TOKEN=%s\nPRINTER_BACKEND=mock\nVIJU_NETWORK_HELPER=/usr/local/libexec/viju-network\n' "$admin_token" > /etc/viju-ticketbooth/app.env
+  printf 'VIJU_DATA_DIR=/var/lib/viju-ticketbooth\nPRINTER_BACKEND=mock\nVIJU_NETWORK_HELPER=/usr/local/libexec/viju-network\n' > /etc/viju-ticketbooth/app.env
   chmod 0600 /etc/viju-ticketbooth/app.env
 fi
+sed -i '/^VIJU_ADMIN_TOKEN=/d' /etc/viju-ticketbooth/access.env /etc/viju-ticketbooth/app.env
 python3 -m venv backend/.venv
 backend/.venv/bin/pip install -r backend/requirements.txt
 (cd frontend && npm ci && npm run build)
@@ -63,5 +62,5 @@ nginx -t
 systemctl daemon-reload
 systemctl enable --now NetworkManager bluetooth nginx viju-ticketbooth-api.service viju-ticketbooth-worker.service viju-ticketbooth-network.service
 systemctl reload nginx
-echo "Installation complete. Credentials are in /etc/viju-ticketbooth/access.env (root-only)."
+echo "Installation complete. Setup WLAN credentials are in /etc/viju-ticketbooth/access.env (root-only)."
 echo "Configure /etc/viju-ticketbooth/app.env for TMDB and the actual printer, then restart API and worker."

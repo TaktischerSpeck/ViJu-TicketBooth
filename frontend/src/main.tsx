@@ -7,7 +7,7 @@ import './typography.css'
 import { usePreview } from './usePreview'
 import { normalizeDesign, type Design } from './ticketDesign'
 import { TypographyControls } from './TypographyControls'
-import { germanDate, idempotencyKey, validGermanDate } from './ticketInput'
+import { formatGermanDateInput, germanDate, idempotencyKey, validGermanDate } from './ticketInput'
 
 type Crop = { zoom: number; x: number; y: number }
 type Ticket = { id?: string; title: string; tmdb_id: number|null; poster_path: string|null; asset_id: string|null; date: string; time: string; cinema: string; hall: string; row: string; seat: string; note: string; crop: Crop; design: Design }
@@ -22,9 +22,8 @@ const normalizeTicket = (value: Partial<Ticket>): Ticket => {
   return {...empty, ...clean, date:germanDate(value.date || ''), crop:{...empty.crop, ...value.crop}, design:normalizeDesign(value.design)}
 }
 const img = (path?: string|null, size='w342') => path ? `https://image.tmdb.org/t/p/${size}${path}` : ''
-const getToken = () => sessionStorage.getItem('viju-admin') || ''
 async function api<T>(url: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch('/api' + url, { ...init, headers: { ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), 'X-Admin-Token': getToken(), ...init.headers } })
+  const response = await fetch('/api' + url, { ...init, headers: { ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...init.headers } })
   if (!response.ok) {
     let detail = response.statusText
     try { const data = await response.json(); detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail) } catch { /* Keep HTTP status */ }
@@ -50,7 +49,6 @@ function App() {
   const [wifi, setWifi] = useState({ ssid: '', password: '' })
   const [presets, setPresets] = useState<{id: string; name: string; design: Design}[]>([])
   const [presetName, setPresetName] = useState('')
-  const [token, setToken] = useState(getToken())
   const uploadRef = useRef<HTMLInputElement>(null)
   const previewRef = useRef<HTMLImageElement>(null)
   const drag = useRef<{x: number; y: number; crop: Crop}|null>(null)
@@ -67,7 +65,7 @@ function App() {
     api<PrinterStatus>('/printer/status').then(setPrinter).catch(report)
   }
   useEffect(() => {
-    if (!getToken()) setNotice('Trage unter Einstellungen zuerst das Admin-Token aus der Installation ein.')
+    sessionStorage.removeItem('viju-admin')
     refresh()
     api<Movie[]>('/movies/now-playing').then(setNow).catch(() => {})
     api<{mac:string;channel:number}>('/printer').then(setPrinterForm).catch(() => {})
@@ -156,7 +154,7 @@ function App() {
             {posters.length>0&&<><div className="subhead">POSTER AUSWÄHLEN <small>ENGLISH FIRST</small></div><div className="poster-strip">{posters.map((p,i)=><button key={p.file_path} className={ticket.poster_path===p.file_path?'selected':''} onClick={()=>patch({poster_path:p.file_path,asset_id:null,crop:{zoom:1,x:0,y:0}})} title={`${p.iso_639_1||'ohne Sprache'} · ${p.width} × ${p.height}`}><img loading="lazy" src={img(p.file_path,'w185')} alt={`Poster ${i+1}`}/><span>{p.iso_639_1||'–'}</span></button>)}</div></>}
           </article>
           <article className="panel"><div className="section-title"><span className="number">02</span><div><h2>Die Details</h2><p>Alle Angaben sind optional.</p></div></div>
-            <div className="form-grid"><label className="field">Datum<input type="text" inputMode="numeric" placeholder="TT.MM.JJJJ" maxLength={10} value={ticket.date} onChange={e=>patch({date:e.target.value})} onBlur={()=>patch({date:germanDate(ticket.date)})}/></label>{([['time','Uhrzeit','time'],['cinema','Kino','text'],['hall','Saal','text'],['row','Reihe','text'],['seat','Sitz','text'],['note','Zusatztext','text']] as const).map(([key,label,type])=><label className="field" key={key}>{label}<input type={type} value={ticket[key]} maxLength={key==='note'?120:80} onChange={e=>patch({[key]:e.target.value})}/></label>)}</div>
+            <div className="form-grid"><label className="field">Datum<input type="text" inputMode="numeric" placeholder="TT.MM.JJJJ" maxLength={10} value={ticket.date} onChange={e=>patch({date:formatGermanDateInput(e.target.value,(e.nativeEvent as InputEvent).inputType || '')})} onBlur={()=>patch({date:germanDate(ticket.date)})}/></label>{([['time','Uhrzeit','time'],['cinema','Kino','text'],['hall','Saal','text'],['row','Reihe','text'],['seat','Sitz','text'],['note','Zusatztext','text']] as const).map(([key,label,type])=><label className="field" key={key}>{label}<input type={type} value={ticket[key]} maxLength={key==='note'?120:80} onChange={e=>patch({[key]:e.target.value})}/></label>)}</div>
           </article>
           <article className="panel"><div className="section-title"><span className="number">03</span><div><h2>Der Look</h2><p>Text direkt auf dem Filmplakat.</p></div></div>
             <TypographyControls design={ticket.design} onChange={design}/>
@@ -184,7 +182,6 @@ function App() {
       {page==='settings'&&<div className="settings-grid">
         <article className="panel"><div className="section-title"><span className="number"><Printer size={18}/></span><div><h2>HP Sprocket</h2><p>MAC-Adresse manuell eintragen. Kein Bluetooth-Scan.</p></div></div><div className="form-grid"><label className="field">Bluetooth-MAC<input placeholder="C4:30:18:38:BD:E1" value={printerForm.mac} onChange={e=>setPrinterForm({...printerForm,mac:e.target.value})}/></label><label className="field">OBEX-Channel<input type="number" min="1" max="30" value={printerForm.channel} onChange={e=>setPrinterForm({...printerForm,channel:+e.target.value})}/></label></div><div className="button-row"><button onClick={()=>act(async()=>{await api('/printer',{method:'PUT',body:JSON.stringify(printerForm)});setPrinter(await api('/printer/status'));setNotice('Drucker gespeichert.')})}>Speichern</button><button disabled={busy} onClick={()=>act(async()=>setPrinter(await api('/printer/check',{method:'POST'})))}>Verbindung prüfen</button><button onClick={()=>act(async()=>{await api('/printer/setup',{method:'POST'});setPrinter(await api('/printer/status'))})}>Pairing</button><button onClick={()=>act(async()=>{await api('/printer/trust',{method:'POST'});setPrinter(await api('/printer/status'))})}>Vertrauen</button><button onClick={()=>act(async()=>{const job=await api<Job>('/printer/test-print',{method:'POST'});setNotice('Testdruck: '+job.id.slice(0,8));refresh()})}>Testdruck</button></div>{printer&&<div className="diagnostics">{[['Backend',printer.backend],['Adapter',printer.bluetooth.adapter_available],['Gerät bekannt',printer.bluetooth.device_known],['Gepaart',printer.bluetooth.paired],['Vertrauenswürdig',printer.bluetooth.trusted],['obexftp',printer.obexftp.available],['Verbindung',printer.backend==='mock'?'Mock-Modus':printer.reachable===null?'Nicht geprüft':printer.reachable?'Erreichbar':'Nicht erreichbar'],['Druckbereit',printer.ready]].map(([label,value])=><div key={String(label)}><span>{label}</span><b>{typeof value==='boolean'?(value?'Ja':'Nein'):value}</b></div>)}{printer.check_error&&<p className="help" role="status">{printer.check_error}</p>}</div>}<button className="danger-link" onClick={()=>act(async()=>{await api('/printer/forget',{method:'POST'});setPrinterForm({mac:'',channel:4});setPrinter(await api('/printer/status'))})}>Drucker aus ViJu-TicketBooth entfernen</button></article>
         <article className="panel"><div className="section-title"><span className="number"><Wifi size={18}/></span><div><h2>Netzwerk</h2><p>Setup und Recovery über den internen WLAN-Chip.</p></div></div><div className="diagnostics"><div><span>Modus</span><b>{String(network?.mode||'Nicht verfügbar')}</b></div><div><span>SSID</span><b>{String(network?.ssid||'–')}</b></div><div><span>IP-Adresse</span><b>{String(network?.ip_address||'–')}</b></div></div><label className="field">Neue WLAN-SSID<input autoComplete="off" value={wifi.ssid} onChange={e=>setWifi({...wifi,ssid:e.target.value})}/></label><label className="field">WLAN-Passwort<input type="password" autoComplete="new-password" value={wifi.password} onChange={e=>setWifi({...wifi,password:e.target.value})}/></label><button onClick={()=>act(async()=>{await api('/network/connect',{method:'POST',body:JSON.stringify(wifi)});setWifi({ssid:'',password:''});setNotice('Verbindungswechsel gestartet. Verbinde dein Gerät anschließend mit dem Heim-WLAN. Bei Fehlschlag kehrt das Setup-WLAN zurück.')})}>WLAN verbinden</button><p className="help">Beim Wechsel unterbricht das Pi-WLAN kurz. Bei einem falschen Passwort startet der Setup-AP erneut.</p></article>
-        <article className="panel"><div className="section-title"><span className="number">✦</span><div><h2>Admin-Zugang</h2><p>Für Speichern, Drucken und Einstellungen.</p></div></div><label className="field">Admin-Token<input type="password" value={token} onChange={e=>setToken(e.target.value)}/></label><button onClick={()=>{sessionStorage.setItem('viju-admin',token);setNotice('Token für diese Browser-Sitzung gespeichert.')}}>Token übernehmen</button><p className="help">Das Token steht in der bei der Installation angelegten Zugangsdaten-Datei auf dem Pi.</p></article>
       </div>}
     </main>
   </div>

@@ -42,35 +42,35 @@ def test_render_crop_metadata(tmp_path):
 def test_upload_render_print_and_idempotency(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA", tmp_path)
     monkeypatch.setattr(database, "DB", tmp_path / "test.sqlite3")
-    monkeypatch.setattr(config, "ADMIN_TOKEN", "test-secret")
     monkeypatch.setattr(config, "PRINTER_BACKEND", "mock")
     for name in ("uploads", "cache", "renders", "print"):
         (tmp_path / name).mkdir()
     image = io.BytesIO()
     Image.new("RGB", (800, 1200), "#394555").save(image, "PNG")
-    auth = {"X-Admin-Token": "test-secret"}
     with TestClient(app) as client:
-        assert client.post("/api/tickets", json={**example("missing")}).status_code == 403
-        uploaded = client.post("/api/uploads/images", files={"file": ("poster.png", image.getvalue(), "image/png")}, headers=auth)
+        unauthenticated = client.post("/api/tickets", json={**example("missing")})
+        assert unauthenticated.status_code == 200
+        assert client.delete("/api/tickets/" + unauthenticated.json()["id"]).status_code == 200
+        uploaded = client.post("/api/uploads/images", files={"file": ("poster.png", image.getvalue(), "image/png")})
         assert uploaded.status_code == 200
         asset_id = uploaded.json()["id"]
-        bad = client.post("/api/uploads/images", files={"file": ("bad.png", b"not-an-image", "image/png")}, headers=auth)
+        bad = client.post("/api/uploads/images", files={"file": ("bad.png", b"not-an-image", "image/png")})
         assert bad.status_code == 415
         body = example(asset_id)
         preview = client.post("/api/preview", json=body)
         assert preview.status_code == 200
-        ticket = client.post("/api/tickets", json=body, headers=auth)
+        ticket = client.post("/api/tickets", json=body)
         assert ticket.status_code == 200
         ticket_id = ticket.json()["id"]
-        first = client.post(f"/api/tickets/{ticket_id}/print", headers={**auth, "Idempotency-Key": "one"})
-        second = client.post(f"/api/tickets/{ticket_id}/print", headers={**auth, "Idempotency-Key": "one"})
+        first = client.post(f"/api/tickets/{ticket_id}/print", headers={"Idempotency-Key": "one"})
+        second = client.post(f"/api/tickets/{ticket_id}/print", headers={"Idempotency-Key": "one"})
         assert first.json()["id"] == second.json()["id"]
         assert asyncio.run(process_one())
         job = client.get("/api/print-jobs/" + first.json()["id"]).json()
         assert job["status"] == "completed"
         assert (tmp_path / "renders" / (job["id"] + ".png")).exists()
         assert (tmp_path / "print" / (job["id"] + ".jpg")).exists()
-        assert client.post(f"/api/tickets/{ticket_id}/duplicate", headers=auth).status_code == 200
+        assert client.post(f"/api/tickets/{ticket_id}/duplicate").status_code == 200
 
 
 def test_wifi_switch_failure_restores_ap(tmp_path, monkeypatch):

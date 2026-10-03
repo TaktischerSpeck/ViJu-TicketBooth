@@ -33,7 +33,7 @@ sudo bash deploy/install.sh
 Das Skript installiert Python-Abhängigkeiten, baut das Frontend, richtet `viju`, nginx, den Druck-Worker und den NetworkManager-Watchdog ein. Es erzeugt einmalig:
 
 ```text
-/etc/viju-ticketbooth/access.env   # Setup-WLAN-Passwort und Admin-Token, root-only
+/etc/viju-ticketbooth/access.env   # Setup-WLAN-Passwort, root-only
 /etc/viju-ticketbooth/app.env      # Backend-Konfiguration, root-only
 /var/lib/viju-ticketbooth/          # SQLite, Poster, Uploads, Render und Druckdateien
 ```
@@ -44,7 +44,7 @@ Die Zugangsdaten direkt bei der Installation sicher notieren:
 sudo cat /etc/viju-ticketbooth/access.env
 ```
 
-Die Datei enthält zwei getrennte Werte: `SETUP_AP_PASSWORD` für das WPA2-WLAN und `VIJU_ADMIN_TOKEN` für schreibende Aktionen der Weboberfläche. Beide niemals ins Repository übernehmen.
+Die Datei enthält `SETUP_AP_PASSWORD` für das WPA2-Setup-WLAN. Das Webinterface verlangt kein Admin-Token.
 
 ## 3. TMDB und Druckmodus
 
@@ -56,7 +56,6 @@ Beispiel:
 
 ```env
 VIJU_DATA_DIR=/var/lib/viju-ticketbooth
-VIJU_ADMIN_TOKEN=<bereits erzeugter Wert>
 TMDB_API_TOKEN=<eigener TMDB API Read Access Token>
 PRINTER_BACKEND=mock
 VIJU_NETWORK_HELPER=/usr/local/libexec/viju-network
@@ -84,7 +83,7 @@ IP:   192.168.4.1
 URL:  http://192.168.4.1
 ```
 
-Mit dem Passwort aus `access.env` verbinden. Die Oberfläche öffnen und unter **Einstellungen → Admin-Zugang** das Admin-Token eingeben. Danach unter **Netzwerk** die SSID und das Passwort des Heim-WLANs eintragen und **WLAN verbinden** auslösen.
+Mit dem Passwort aus `access.env` verbinden. Die Oberfläche öffnen und unter **Netzwerk** die SSID und das Passwort des Heim-WLANs eintragen und **WLAN verbinden** auslösen.
 
 Die Webverbindung bricht während des Umschaltens ab. Nach erfolgreichem Wechsel das Smartphone wieder mit dem Heim-WLAN verbinden und die neue Pi-IP im Router oder per `hostname -I` ermitteln. Bei Fehlschlag aktiviert der Helfer den Setup-AP erneut. Der Watchdog startet ihn auch bei später dauerhaft verlorener WLAN-Verbindung nach 90 Sekunden.
 
@@ -133,12 +132,28 @@ sudo bash deploy/install.sh
 sudo systemctl restart viju-ticketbooth-api viju-ticketbooth-worker viju-ticketbooth-network
 ```
 
-`install.sh` lässt vorhandene Zugangsdaten und Laufzeitdaten unangetastet. Für eine Sicherung die API/den Worker kurz stoppen oder SQLite über dessen Backup-API sichern; danach `/var/lib/viju-ticketbooth/`, `/etc/viju-ticketbooth/` und gegebenenfalls NetworkManager-Profile sichern. `journalctl` wird durch die übliche systemd-Journal-Rotation begrenzt; `SystemMaxUse` bei Bedarf in `/etc/systemd/journald.conf` setzen.
+`install.sh` erhält das Setup-WLAN-Passwort und Laufzeitdaten; vorhandene `VIJU_ADMIN_TOKEN`-Einträge werden entfernt. Für eine Sicherung die API/den Worker kurz stoppen oder SQLite über dessen Backup-API sichern; danach `/var/lib/viju-ticketbooth/`, `/etc/viju-ticketbooth/` und gegebenenfalls NetworkManager-Profile sichern. `journalctl` wird durch die übliche systemd-Journal-Rotation begrenzt; `SystemMaxUse` bei Bedarf in `/etc/systemd/journald.conf` setzen.
 
 ## 7. Sicherheit und Grenzen
 
-- HTTP auf dem AP ist durch WPA2 geschützt, im Heim-LAN aber unverschlüsselt. Das Admin-Token reist dort im Header. Keine Portweiterleitung ins Internet; für entfernten Zugriff VPN und TLS-Reverse-Proxy verwenden.
+- Die Website und API haben keine Anmeldung. Jeder erreichbare Client kann Tickets, Drucker- und Netzwerkeinstellungen verwalten. HTTP im Heim-LAN ist unverschlüsselt; das Gerät nur in einem vertrauenswürdigen privaten Netzwerk betreiben und nicht ins Internet weiterleiten.
 - Der API-Dienst läuft als `viju`; nur die beiden fest installierten Helfer können über eng begrenzte sudoers-Regeln WLAN beziehungsweise BlueZ verändern.
 - Uploads sind auf 16 MiB begrenzt und werden als validierte Bilder mit zufälligem Dateinamen gespeichert. TMDB-Poster werden nur von `image.tmdb.org` geladen.
 - Der Print-Worker arbeitet Jobs seriell ab. Nach einem Neustart wird ein unterbrochener Transfer als fehlgeschlagen markiert, weil unbekannt ist, ob das Gerät bereits gedruckt hat. Ein erneuter Druck muss bewusst gestartet werden.
 - Alte Render und Upload-Dateien werden nicht automatisch entfernt; Speicherbelegung auf kleinen SD-Karten beobachten. Historie und aktive Poster bleiben für Offline-Nutzung erhalten.
+
+## Update
+
+```bash
+cd /opt/viju-ticketbooth
+git status --short
+git pull --ff-only origin mvp
+backend/.venv/bin/python -m pip install -r backend/requirements.txt
+npm --prefix frontend ci
+npm --prefix frontend run build
+sudo systemctl restart viju-ticketbooth-api viju-ticketbooth-worker
+```
+
+```bash
+cd /opt/viju-ticketbooth && git status --short && git pull --ff-only origin mvp && backend/.venv/bin/python -m pip install -r backend/requirements.txt && npm --prefix frontend ci && npm --prefix frontend run build &&sudo systemctl restart viju-ticketbooth-api viju-ticketbooth-worker
+```

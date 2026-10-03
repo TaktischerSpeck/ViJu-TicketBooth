@@ -1,5 +1,4 @@
 import asyncio
-import hmac
 import io
 import json
 import os
@@ -8,7 +7,7 @@ import uuid
 import anyio
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Depends, Header, HTTPException, UploadFile, File, Response, Request
+from fastapi import FastAPI, Header, HTTPException, UploadFile, File, Response, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -25,11 +24,6 @@ async def lifespan(app):
 
 
 app = FastAPI(title="ViJu-TicketBooth", lifespan=lifespan)
-
-
-def admin(x_admin_token: str = Header("")):
-    if not config.ADMIN_TOKEN or not hmac.compare_digest(x_admin_token, config.ADMIN_TOKEN):
-        raise HTTPException(403, "Admin token required")
 
 
 def ticket_row(id):
@@ -76,7 +70,7 @@ async def posters(movie_id: int):
     return movies.sorted_posters(data.get("posters", []))
 
 
-@app.post("/api/uploads/images", dependencies=[Depends(admin)])
+@app.post("/api/uploads/images")
 async def upload(file: UploadFile = File(...)):
     if file.content_type not in ("image/jpeg", "image/png", "image/webp"):
         raise HTTPException(415, "Only JPEG, PNG and WebP are supported")
@@ -109,7 +103,7 @@ def asset(id: uuid.UUID):
     return FileResponse(row["path"], media_type="image/jpeg")
 
 
-@app.delete("/api/uploads/{id}", dependencies=[Depends(admin)])
+@app.delete("/api/uploads/{id}")
 def delete_upload(id: uuid.UUID):
     with connection() as db:
         used = db.execute("SELECT 1 FROM tickets WHERE json_extract(body, '$.asset_id')=? LIMIT 1", (str(id),)).fetchone()
@@ -122,7 +116,7 @@ def delete_upload(id: uuid.UUID):
     return {"deleted": bool(row)}
 
 
-@app.post("/api/tickets", dependencies=[Depends(admin)])
+@app.post("/api/tickets")
 def create_ticket(ticket: Ticket):
     id = str(uuid.uuid4())
     with connection() as db:
@@ -142,7 +136,7 @@ def get_ticket(id: uuid.UUID):
     return ticket_row(str(id))
 
 
-@app.put("/api/tickets/{id}", dependencies=[Depends(admin)])
+@app.put("/api/tickets/{id}")
 def update_ticket(id: uuid.UUID, ticket: Ticket):
     with connection() as db:
         cursor = db.execute("UPDATE tickets SET body=?, updated_at=? WHERE id=?", (ticket.model_dump_json(), now(), str(id)))
@@ -151,7 +145,7 @@ def update_ticket(id: uuid.UUID, ticket: Ticket):
     return ticket_row(str(id))
 
 
-@app.delete("/api/tickets/{id}", dependencies=[Depends(admin)])
+@app.delete("/api/tickets/{id}")
 def delete_ticket(id: uuid.UUID):
     with connection() as db:
         if db.execute("SELECT 1 FROM jobs WHERE ticket_id=? AND status IN ('queued','rendering','printing')", (str(id),)).fetchone():
@@ -161,7 +155,7 @@ def delete_ticket(id: uuid.UUID):
     return {"deleted": bool(result.rowcount)}
 
 
-@app.post("/api/tickets/{id}/duplicate", dependencies=[Depends(admin)])
+@app.post("/api/tickets/{id}/duplicate")
 def duplicate(id: uuid.UUID):
     original = ticket_row(str(id))
     original.pop("id")
@@ -189,7 +183,7 @@ async def preview(ticket: Ticket, request: Request):
     return Response(png, media_type="image/png", headers={"Cache-Control": "no-store"})
 
 
-@app.post("/api/tickets/{id}/render", dependencies=[Depends(admin)])
+@app.post("/api/tickets/{id}/render")
 async def render_saved(id: uuid.UUID, request: Request):
     ticket = Ticket.model_validate(ticket_row(str(id)))
     try:
@@ -235,7 +229,7 @@ def job_row(id):
     return dict(row)
 
 
-@app.post("/api/tickets/{id}/print", dependencies=[Depends(admin)])
+@app.post("/api/tickets/{id}/print")
 def print_ticket(id: uuid.UUID, idempotency_key: str | None = Header(None)):
     ticket_row(str(id))
     if idempotency_key and len(idempotency_key) > 100:
@@ -254,7 +248,7 @@ def get_job(id: uuid.UUID):
     return job_row(str(id))
 
 
-@app.post("/api/print-jobs/{id}/retry", dependencies=[Depends(admin)])
+@app.post("/api/print-jobs/{id}/retry")
 def retry(id: uuid.UUID):
     previous = job_row(str(id))
     if previous["status"] not in ("failed", "completed", "cancelled"):
@@ -262,7 +256,7 @@ def retry(id: uuid.UUID):
     return queue(previous["ticket_id"])
 
 
-@app.delete("/api/print-jobs/{id}", dependencies=[Depends(admin)])
+@app.delete("/api/print-jobs/{id}")
 def delete_job(id: uuid.UUID):
     with connection() as db:
         row = db.execute("SELECT status FROM jobs WHERE id=?", (str(id),)).fetchone()
@@ -280,7 +274,7 @@ def printer():
     return setting("printer", {"mac": config.DEFAULT_MAC, "channel": config.DEFAULT_CHANNEL})
 
 
-@app.put("/api/printer", dependencies=[Depends(admin)])
+@app.put("/api/printer")
 def set_printer(value: Printer):
     set_setting("printer", value.model_dump())
     return value
@@ -315,7 +309,7 @@ async def get_printer_status():
     return await printer_status()
 
 
-@app.post("/api/printer/setup", dependencies=[Depends(admin)])
+@app.post("/api/printer/setup")
 async def setup_printer():
     value = Printer.model_validate(printer())
     if not value.mac:
@@ -323,18 +317,18 @@ async def setup_printer():
     return bluetooth_action("pair", value.mac)
 
 
-@app.post("/api/printer/trust", dependencies=[Depends(admin)])
+@app.post("/api/printer/trust")
 async def trust_printer():
     value = Printer.model_validate(printer())
     return bluetooth_action("trust", value.mac)
 
 
-@app.post("/api/printer/check", dependencies=[Depends(admin)])
+@app.post("/api/printer/check")
 async def check_printer():
     return await printer_status(probe=True)
 
 
-@app.post("/api/printer/forget", dependencies=[Depends(admin)])
+@app.post("/api/printer/forget")
 async def forget_printer(remove_from_bluez: bool = False):
     value = Printer.model_validate(printer())
     if remove_from_bluez and value.mac:
@@ -353,7 +347,7 @@ def bluetooth_action(action, mac):
     return json.loads(result.stdout)
 
 
-@app.post("/api/printer/test-print", dependencies=[Depends(admin)])
+@app.post("/api/printer/test-print")
 def test_print():
     from PIL import ImageDraw, ImageFont
     image = Image.new("RGB", (config.WIDTH, config.HEIGHT), "#181d2b")
@@ -387,7 +381,7 @@ def presets():
         return [{"id": r["id"], "name": r["name"], "design": json.loads(r["design"])} for r in db.execute("SELECT * FROM presets ORDER BY name")]
 
 
-@app.post("/api/presets", dependencies=[Depends(admin)])
+@app.post("/api/presets")
 def create_preset(preset: Preset):
     id = str(uuid.uuid4())
     with connection() as db:
@@ -395,7 +389,7 @@ def create_preset(preset: Preset):
     return {"id": id, **preset.model_dump()}
 
 
-@app.put("/api/presets/{id}", dependencies=[Depends(admin)])
+@app.put("/api/presets/{id}")
 def update_preset(id: uuid.UUID, preset: Preset):
     with connection() as db:
         result = db.execute("UPDATE presets SET name=?, design=? WHERE id=?", (preset.name, preset.design.model_dump_json(), str(id)))
@@ -404,7 +398,7 @@ def update_preset(id: uuid.UUID, preset: Preset):
     return {"id": str(id), **preset.model_dump()}
 
 
-@app.delete("/api/presets/{id}", dependencies=[Depends(admin)])
+@app.delete("/api/presets/{id}")
 def delete_preset(id: uuid.UUID):
     with connection() as db:
         result = db.execute("DELETE FROM presets WHERE id=?", (str(id),))
@@ -431,7 +425,7 @@ def network_status():
     return helper("status")
 
 
-@app.post("/api/network/connect", dependencies=[Depends(admin)])
+@app.post("/api/network/connect")
 def network_connect(wifi: Wifi):
     # The helper performs the switch and restores the AP on failure.
     if not config.NETWORK_HELPER:

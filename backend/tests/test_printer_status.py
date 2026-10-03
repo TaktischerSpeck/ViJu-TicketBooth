@@ -32,7 +32,6 @@ def test_rfcomm_probe_connects_only_to_configured_channel(monkeypatch):
 
 def test_connection_check_updates_live_status(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB", tmp_path / "test.sqlite3")
-    monkeypatch.setattr(config, "ADMIN_TOKEN", "test")
     monkeypatch.setattr(config, "PRINTER_BACKEND", "obexftp")
     async def paired(_):
         return {"adapter_available": True, "device_known": True, "paired": True,
@@ -49,11 +48,10 @@ def test_connection_check_updates_live_status(tmp_path, monkeypatch):
         set_setting("printer", {"mac": "C4:30:18:38:BD:E1", "channel": 4})
         passive = client.get("/api/printer/status").json()
         assert passive["reachable"] is None and passive["ready"] is False
-        assert client.post("/api/printer/check").status_code == 403
-        online = client.post("/api/printer/check", headers={"X-Admin-Token": "test"}).json()
+        online = client.post("/api/printer/check").json()
         assert online["reachable"] is True and online["ready"] is True
         reachable = False
-        offline = client.post("/api/printer/check", headers={"X-Admin-Token": "test"}).json()
+        offline = client.post("/api/printer/check").json()
         assert offline["reachable"] is False and offline["ready"] is False
         assert offline["check_error"] == "Drucker ist aus."
     assert calls == [("C4:30:18:38:BD:E1", 4)] * 2

@@ -13,7 +13,6 @@ from app.main import app
 
 def test_health_responds_during_render_and_renders_are_serial(tmp_path, monkeypatch):
     monkeypatch.setattr(database, "DB", tmp_path / "test.sqlite3")
-    monkeypatch.setattr(config, "ADMIN_TOKEN", "test")
     monkeypatch.setattr(printing, "source_for", lambda ticket: tmp_path / "poster.png")
     started, release = threading.Event(), threading.Event()
     lock = threading.Lock()
@@ -35,7 +34,7 @@ def test_health_responds_during_render_and_renders_are_serial(tmp_path, monkeypa
     monkeypatch.setattr("app.render.render", slow_render)
     with TestClient(app) as client, ThreadPoolExecutor(3) as pool:
         def preview():
-            return client.post('/api/preview', json={"poster_path": "/poster.jpg"}, headers={"X-Admin-Token": "test"})
+            return client.post('/api/preview', json={"poster_path": "/poster.jpg"})
         first = pool.submit(preview)
         try:
             assert started.wait(2)

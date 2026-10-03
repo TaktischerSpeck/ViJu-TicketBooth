@@ -12,7 +12,7 @@ Lokale Webanwendung für kleine Kino-Erinnerungstickets auf einem HP Sprocket. D
 - persistente Druckwarteschlange mit Idempotency-Key, Mock-Backend und OBEX-Transfer
 - gezieltes Pairing/Trust via BlueZ für eine manuell eingetragene MAC; kein allgemeiner Bluetooth-Scanner
 - Setup- und Recovery-AP via NetworkManager auf dem internen WLAN-Chip
-- Admin-Token für schreibende API-Aufrufe; TMDB-Token verbleibt im Backend
+- Keine Anmeldung oder Website-Zugangsbeschränkung; TMDB-Token verbleibt im Backend
 
 **Pi-Installation:** [DEPLOY_PI.md](DEPLOY_PI.md). Die Hinweise zu WLAN-Umschaltung und dem echten HP Sprocket dort vor der Installation lesen.
 
@@ -24,7 +24,7 @@ Python 3.11+, Node.js 18+ und DejaVu Sans werden benötigt. Ohne Pi-Hardware fun
 python3 -m venv backend/.venv
 backend/.venv/bin/pip install -r backend/requirements-dev.txt
 cp .env.example .env
-# In .env ein zufälliges VIJU_ADMIN_TOKEN setzen und PRINTER_BACKEND=mock belassen.
+# PRINTER_BACKEND=mock belassen.
 cd frontend && npm install && npm run build && cd ..
 backend/.venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
 ```
@@ -35,7 +35,7 @@ In einem zweiten Terminal:
 PYTHONPATH=backend backend/.venv/bin/python -m app.printing
 ```
 
-Danach `http://127.0.0.1:8000` öffnen, unter **Einstellungen → Admin-Zugang** das Token aus `.env` eintragen und mit einem eigenen Poster starten. Für TMDB `TMDB_API_TOKEN` in `.env` eintragen und API neu starten. `npm run dev` im Frontend-Verzeichnis startet alternativ den Vite-Entwicklungsserver mit API-Proxy.
+Danach `http://127.0.0.1:8000` öffnen und mit einem eigenen Poster starten. Für TMDB `TMDB_API_TOKEN` in `.env` eintragen und API neu starten. `npm run dev` im Frontend-Verzeichnis startet alternativ den Vite-Entwicklungsserver mit API-Proxy.
 
 Tests:
 
@@ -54,11 +54,11 @@ cd frontend && npm run build
 - `deploy/network/viju-network`: privilegierter NetworkManager-Helfer für AP/Recovery
 - `frontend/`: mobile React-Oberfläche
 
-Die API unter `/docs` dokumentiert die Endpunkte. Die Live-Vorschau ist ohne Admin-Token abrufbar; Zustandsänderungen verlangen `X-Admin-Token`. Die Konfiguration unter `/etc/viju-ticketbooth/app.env` enthält Server-Defaults, der Drucker wird zur Laufzeit in SQLite gespeichert. WLAN-Schlüssel liegen ausschließlich in root-eigenen NetworkManager-Profilen.
+Die API unter `/docs` dokumentiert die Endpunkte. Website und API verlangen keine Anmeldung; alle API-Aktionen sind ohne Token abrufbar. Die Konfiguration unter `/etc/viju-ticketbooth/app.env` enthält Server-Defaults, der Drucker wird zur Laufzeit in SQLite gespeichert. WLAN-Schlüssel liegen ausschließlich in root-eigenen NetworkManager-Profilen.
 
 ## Bekannte Grenzen
 
 - Der OBEX-Befehl `obexftp --nopath --noconn --uuid none --bluetooth MAC --channel N -p datei.jpg` stammt aus dem Bauplan und muss am konkreten Sprocket mit Firmware und Papier kalibriert werden. Ein erfolgreicher Transfer bestätigt nicht zwingend einen tatsächlich abgeschlossenen Ausdruck.
 - Der Pi 3B+ nutzt einen WLAN-Chip. Während des Wechsels vom AP ins Heimnetz ist der AP kurz offline; bei Fehlschlag wird er wieder aktiviert. Ein unterbrechungsfreier Test ist mit dieser Ein-Radio-Architektur nicht möglich.
-- Das Admin-Token wird für die Browser-Sitzung gespeichert. Für Zugriff jenseits eines vertrauenswürdigen lokalen Netzes HTTPS und VPN/zusätzliche Authentisierung vorsehen.
+- Jeder, der die Website im erreichbaren Netzwerk öffnen kann, kann Tickets, Drucker- und Netzwerkeinstellungen verwalten. Das Gerät deshalb nur in einem vertrauenswürdigen, privaten Netzwerk betreiben.
 - Druckbreite und -höhe sind als 600 × 900 Pixel voreingestellt und müssen nach einem Testdruck für das konkrete Gerät angepasst werden.

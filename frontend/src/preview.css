@@ -3,3 +3,4 @@
 .ticket-image { position: relative; flex: none; }
 .ticket-image > img, .loading-preview { position: absolute; inset: 0; width: 100%; height: 100%; }
 .loading-preview span { right: 10px; }
+.settings-grid .panel:last-child { grid-column: auto; }
