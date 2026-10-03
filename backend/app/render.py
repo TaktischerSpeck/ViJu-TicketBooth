@@ -135,8 +135,12 @@ def text_layout(ticket, draw):
     y = top
     for parts, height in rows:
         row_width = width(parts)
-        x = margin_x if design.position == "bottom-left" else (
-            WIDTH - margin_x - row_width if design.position == "bottom-right" else (WIDTH - row_width) / 2)
+        if design.position == "bottom-left":
+            x = margin_x
+        elif design.position == "bottom-right":
+            x = WIDTH - margin_x - row_width
+        else:  # "auto" and "bottom-center" keep the text block centered.
+            x = (WIDTH - row_width) / 2
         for value, font in parts:
             positioned.append((value, font, x + stroke, y + stroke))
             x += draw.textlength(value, font=font)

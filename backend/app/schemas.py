@@ -33,7 +33,7 @@ class Design(BaseModel):
     readability: Literal["minimal", "soft", "strong", "auto"] = "soft"
     text_color: Literal["auto", "white", "black"] = "auto"
     shadow: Literal["off", "light", "strong"] = "light"
-    position: Literal["bottom-left", "bottom-center", "bottom-right"] = "bottom-center"
+    position: Literal["auto", "bottom-left", "bottom-center", "bottom-right"] = "auto"
     strength: float = Field(0.5, ge=0, le=1)
     safe_area: float = Field(0.065, ge=0.03, le=0.15)
     print_inset: float = Field(0.03, ge=0, le=0.10)

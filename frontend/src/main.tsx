@@ -33,7 +33,7 @@ async function api<T>(url: string, init: RequestInit = {}): Promise<T> {
 }
 function App() {
   const [page, setPage] = useState<'editor'|'history'|'settings'>('editor')
-const [ticket, setTicket] = useState<Ticket>(() => { try { const draft = JSON.parse(sessionStorage.getItem('viju-draft') || '{}'); if (draft.design?.position === 'bottom-left') draft.design.position = 'bottom-center'; return normalizeTicket(draft) } catch { return normalizeTicket({}) } })
+const [ticket, setTicket] = useState<Ticket>(() => { try { const draft = JSON.parse(sessionStorage.getItem('viju-draft') || '{}'); if (draft.design?.position === 'bottom-left') draft.design.position = 'auto'; return normalizeTicket(draft) } catch { return normalizeTicket({}) } })
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Movie[]>([])
   const [now, setNow] = useState<Movie[]>([])
@@ -160,7 +160,7 @@ const [ticket, setTicket] = useState<Ticket>(() => { try { const draft = JSON.pa
             <label className="field">Lesbarkeit<div className="segmented">{(['minimal','soft','strong','auto'] as const).map(v=><button key={v} className={ticket.design.readability===v?'selected':''} onClick={()=>design({readability:v})}>{v}</button>)}</div></label>
             <TypographyControls design={ticket.design} onChange={design}/>
             <div className="form-grid"><label className="field">Textfarbe<select value={ticket.design.text_color} onChange={e=>design({text_color:e.target.value as Design['text_color']})}><option value="auto">Automatisch</option><option value="white">Weiß</option><option value="black">Schwarz</option></select></label><label className="field">Schatten<select value={ticket.design.shadow} onChange={e=>design({shadow:e.target.value as Design['shadow']})}><option value="off">Aus</option><option value="light">Leicht</option><option value="strong">Stark</option></select></label></div>
-            <label className="field">Textposition<select value={ticket.design.position} onChange={e=>design({position:e.target.value as Design['position']})}><option value="bottom-left">Unten links</option><option value="bottom-center">Unten mittig</option><option value="bottom-right">Unten rechts</option></select></label>
+            <label className="field">Textposition<select value={ticket.design.position} onChange={e=>design({position:e.target.value as Design['position']})}><option value="auto">Automatisch (mittig)</option><option value="bottom-left">Unten links</option><option value="bottom-center">Unten mittig</option><option value="bottom-right">Unten rechts</option></select></label>
             <label className="field">Overlay-Stärke <span>{Math.round(ticket.design.strength*100)}%</span><input type="range" min="0" max="1" step=".05" value={ticket.design.strength} onChange={e=>design({strength:+e.target.value})}/></label>
             <label className="field">Sicherheitsabstand <span>{Math.round(ticket.design.safe_area*100)}%</span><input type="range" min=".03" max=".15" step=".005" value={ticket.design.safe_area} onChange={e=>design({safe_area:+e.target.value})}/></label>
             <label className="field">Druckrand gegen Beschnitt <span>{Math.round(ticket.design.print_inset*100)}%</span><input aria-label="Druckrand gegen Beschnitt" type="range" min="0" max=".10" step=".005" value={ticket.design.print_inset} onChange={e=>design({print_inset:+e.target.value})}/></label>
