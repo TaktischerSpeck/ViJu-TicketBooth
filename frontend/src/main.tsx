@@ -33,7 +33,7 @@ async function api<T>(url: string, init: RequestInit = {}): Promise<T> {
 }
 function App() {
   const [page, setPage] = useState<'editor'|'history'|'settings'>('editor')
-  const [ticket, setTicket] = useState<Ticket>(() => { try { return normalizeTicket(JSON.parse(sessionStorage.getItem('viju-draft') || '{}')) } catch { return normalizeTicket({}) } })
+const [ticket, setTicket] = useState<Ticket>(() => { try { const draft = JSON.parse(sessionStorage.getItem('viju-draft') || '{}'); if (draft.design?.position === 'bottom-left') draft.design.position = 'bottom-center'; return normalizeTicket(draft) } catch { return normalizeTicket({}) } })
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<Movie[]>([])
   const [now, setNow] = useState<Movie[]>([])
@@ -157,8 +157,8 @@ function App() {
             <div className="form-grid"><label className="field">Datum<input type="text" inputMode="numeric" placeholder="TT.MM.JJJJ" maxLength={10} value={ticket.date} onChange={e=>patch({date:formatGermanDateInput(e.target.value,(e.nativeEvent as InputEvent).inputType || '')})} onBlur={()=>patch({date:germanDate(ticket.date)})}/></label>{([['time','Uhrzeit','time'],['cinema','Kino','text'],['hall','Saal','text'],['row','Reihe','text'],['seat','Sitz','text'],['note','Zusatztext','text']] as const).map(([key,label,type])=><label className="field" key={key}>{label}<input type={type} value={ticket[key]} maxLength={key==='note'?120:80} onChange={e=>patch({[key]:e.target.value})}/></label>)}</div>
           </article>
           <article className="panel"><div className="section-title"><span className="number">03</span><div><h2>Der Look</h2><p>Text direkt auf dem Filmplakat.</p></div></div>
-            <TypographyControls design={ticket.design} onChange={design}/>
             <label className="field">Lesbarkeit<div className="segmented">{(['minimal','soft','strong','auto'] as const).map(v=><button key={v} className={ticket.design.readability===v?'selected':''} onClick={()=>design({readability:v})}>{v}</button>)}</div></label>
+            <TypographyControls design={ticket.design} onChange={design}/>
             <div className="form-grid"><label className="field">Textfarbe<select value={ticket.design.text_color} onChange={e=>design({text_color:e.target.value as Design['text_color']})}><option value="auto">Automatisch</option><option value="white">Weiß</option><option value="black">Schwarz</option></select></label><label className="field">Schatten<select value={ticket.design.shadow} onChange={e=>design({shadow:e.target.value as Design['shadow']})}><option value="off">Aus</option><option value="light">Leicht</option><option value="strong">Stark</option></select></label></div>
             <label className="field">Textposition<select value={ticket.design.position} onChange={e=>design({position:e.target.value as Design['position']})}><option value="bottom-left">Unten links</option><option value="bottom-center">Unten mittig</option><option value="bottom-right">Unten rechts</option></select></label>
             <label className="field">Overlay-Stärke <span>{Math.round(ticket.design.strength*100)}%</span><input type="range" min="0" max="1" step=".05" value={ticket.design.strength} onChange={e=>design({strength:+e.target.value})}/></label>

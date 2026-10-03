@@ -15,7 +15,7 @@ export type Design = {
 export const defaultStyle: TextStyle = { font_size: null, bold: null, show_label: null }
 export function normalizeDesign(value: Partial<Design> = {}): Design {
   return {
-    readability: 'soft', text_color: 'auto', shadow: 'light', position: 'bottom-left',
+    readability: 'soft', text_color: 'auto', shadow: 'light', position: 'bottom-center',
     strength: .5, safe_area: .065, print_inset: .03, font_family: 'barlow', base_font_size: 15,
     ...value,
     text_styles: Object.fromEntries(textFields.map(([key]) => [
